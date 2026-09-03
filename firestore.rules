@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// Reglas de seguridad de QR Inventarios by NelSystems.
+// Refuerzan el blind count de la spec §2.3 en la base de datos (equivalente a la
+// RLS de PostgreSQL): un contador nunca puede LEER los conteos del otro rol.
+//
+// Colecciones planas de nivel superior. La membresía usa id determinista
+// `<sesionId>__<uid>` para poder resolver el rol con get() dentro de la regla.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function usuario() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function rolGlobal() {
+      return usuario().rolGlobal;
+    }
+    function esPrivilegiado() {
+      return signedIn() && rolGlobal() in ['ADMIN', 'AUDITOR'];
+    }
+    function esAdmin() {
+      return signedIn() && rolGlobal() == 'ADMIN';
+    }
+    function miembroPath(sesionId) {
+      return /databases/$(database)/documents/miembros/$(sesionId + '__' + request.auth.uid);
+    }
+    function esMiembro(sesionId) {
+      return signedIn() && exists(miembroPath(sesionId));
+    }
+    function rolEnSesion(sesionId) {
+      return get(miembroPath(sesionId)).data.rol;
+    }
+
+    // ---- Catálogo: lectura para autenticados; escritura solo Admin ----
+    match /productos/{codigo}  { allow read: if signedIn(); allow write: if esAdmin(); }
+    match /lotes/{loteId}      { allow read: if signedIn(); allow write: if esAdmin(); }
+
+    // ---- Etiquetas QR e historial de impresiones ----
+    match /etiquetas_qr/{loteId}          { allow read: if signedIn(); allow write: if esAdmin(); }
+    match /historial_impresiones/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if false; // historial inmutable
+    }
+
+    // ---- Importaciones de PDF (Admin escribe; Admin/Auditor leen) ----
+    match /importaciones_pdf/{id}    { allow read: if esPrivilegiado(); allow write: if esAdmin(); }
+    match /importaciones_filas/{id}  { allow read: if esPrivilegiado(); allow write: if esAdmin(); }
+
+    // ---- Usuarios ----
+    match /usuarios/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      // El propio usuario puede editar su nombre; el rol solo lo cambia un Admin.
+      allow update: if esAdmin()
+        || (request.auth.uid == uid
+            && request.resource.data.rolGlobal == resource.data.rolGlobal);
+      allow delete: if esAdmin();
+    }
+
+    // ---- Sesiones, ubicaciones, miembros (Admin gestiona; todos leen) ----
+    match /sesiones/{id}     { allow read: if signedIn(); allow write: if esAdmin(); }
+    match /ubicaciones/{id}  { allow read: if signedIn(); allow write: if esAdmin(); }
+    match /miembros/{id}     { allow read: if signedIn(); allow write: if esAdmin(); }
+
+    // ---- BLIND COUNT (§2.3) ----
+    match /conteos/{conteoId} {
+      allow read: if esPrivilegiado()
+        || resource.data.usuarioId == request.auth.uid
+        || (esMiembro(resource.data.sesionId)
+            && resource.data.rolConteo == rolEnSesion(resource.data.sesionId));
+
+      allow create: if esMiembro(request.resource.data.sesionId)
+        && request.resource.data.rolConteo == rolEnSesion(request.resource.data.sesionId)
+        && request.resource.data.usuarioId == request.auth.uid
+        && request.resource.data.cantidad is int
+        && request.resource.data.cantidad >= 0;
+
+      // Append-only para los contadores. Correcciones = nuevo documento.
+      // La Cloud Function (Admin SDK) escribe `esVigente` sin pasar por reglas.
+      allow update: if esPrivilegiado();
+      // Borrado solo por Admin (borrado en cascada al eliminar la sesión).
+      allow delete: if esAdmin();
+    }
+
+    // ---- Alertas para el auditor: solo Admin / Auditor ----
+    match /alertas/{id} {
+      allow read, write: if esPrivilegiado();
+    }
+  }
+}

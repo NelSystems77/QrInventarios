@@ -1,0 +1,20 @@
+{
+  "name": "qr-inventarios-functions",
+  "description": "Cloud Functions: consolidación autoritativa de conteos y cascada de borrado",
+  "private": true,
+  "engines": { "node": "20" },
+  "main": "lib/index.js",
+  "scripts": {
+    "sync-domain": "node sync-domain.mjs",
+    "build": "npm run sync-domain && tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.3.2"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.3"
+  }
+}

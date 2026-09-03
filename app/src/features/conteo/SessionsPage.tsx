@@ -1,0 +1,135 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from '../../components/toast';
+import { useUsuarioActual } from '../../auth/firebaseAuth';
+import { repo } from '../../data/repo';
+import {
+  UMBRAL_DISCREPANCIA_DEFAULT,
+  crearSesion,
+} from '../../data/conteoService';
+import { useRepo } from '../../data/useRepo';
+import { hayDatosDemo, sembrarDemo } from '../../data/seed';
+
+export function SessionsPage() {
+  useRepo();
+  const nav = useNavigate();
+  const usuario = useUsuarioActual();
+  const [nombre, setNombre] = useState('');
+  const [umbral, setUmbral] = useState(UMBRAL_DISCREPANCIA_DEFAULT * 100);
+  const sesiones = repo.sesiones();
+  const esAdmin = usuario?.rolGlobal === 'ADMIN';
+
+  function crear() {
+    if (!nombre.trim()) return;
+    const s = crearSesion(nombre.trim(), Math.max(1, umbral) / 100);
+    toast('Sesión creada');
+    setNombre('');
+    nav(`/sesiones/${s.id}`);
+  }
+
+  return (
+    <>
+      <h1>Sesiones de inventario</h1>
+      <p className="lead">
+        Cada sesión agrupa los conteos de una jornada. La triangulación y el stock
+        oficial se calculan por sesión.
+      </p>
+
+      {esAdmin && (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Nueva sesión</h2>
+          <div className="row">
+            <input
+              type="text"
+              placeholder="Nombre (ej. Inventario Bodega Central · Sep 2026)"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              style={{ maxWidth: 420 }}
+            />
+            <label style={{ maxWidth: 200 }}>
+              Umbral de alerta (%)
+              <input
+                type="text"
+                inputMode="numeric"
+                value={umbral}
+                onChange={(e) => setUmbral(Number(e.target.value) || 0)}
+              />
+            </label>
+            <button
+              className="primary"
+              onClick={crear}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              Crear
+            </button>
+          </div>
+          <div className="row" style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+            <span className="muted" style={{ fontSize: '.82rem' }}>Demo:</span>
+            <button
+              className="sm"
+              disabled={hayDatosDemo()}
+              onClick={() => {
+                const s = sembrarDemo();
+                toast('Datos de demostración cargados');
+                nav(`/sesiones/${s.id}`);
+              }}
+            >
+              Cargar datos de demostración
+            </button>
+            <button
+              className="sm danger"
+              onClick={() => {
+                if (confirm('¿Borrar TODOS los datos locales (catálogo, sesiones, conteos, etiquetas)?')) {
+                  repo.reset();
+                  localStorage.removeItem('qr-inventarios/servidor-demo/v1');
+                  toast('Datos borrados');
+                }
+              }}
+            >
+              Borrar todo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sesiones.length === 0 ? (
+        <p className="muted">No hay sesiones todavía.</p>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Inicio</th>
+                <th>Estado</th>
+                <th>Umbral</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {sesiones.map((s) => (
+                <tr key={s.id}>
+                  <td>{s.nombre}</td>
+                  <td>{new Date(s.fechaInicio).toLocaleDateString()}</td>
+                  <td>
+                    <span
+                      className={'badge ' + (s.estado === 'ACTIVO' ? 'ok' : 'muted')}
+                    >
+                      {s.estado}
+                    </span>
+                  </td>
+                  <td>{Math.round(s.umbralDiscrepancia * 100)}%</td>
+                  <td>
+                    <button className="sm" onClick={() => nav(`/sesiones/${s.id}`)}>
+                      Abrir
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}

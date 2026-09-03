@@ -1,0 +1,27 @@
+# dependencias
+node_modules/
+
+# builds
+dist/
+dist-ssr/
+app/dist/
+functions/lib/
+
+# firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+*-debug.log
+
+# entorno
+.env
+.env.local
+.env.*.local
+
+# varios
+*.log
+.DS_Store
+.vite/
+*.local
+
+dev-dist/
