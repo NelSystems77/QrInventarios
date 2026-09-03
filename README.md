@@ -105,10 +105,10 @@ Validado contra el *Reporte de Productos en Despacho* de la CCSS (`RptSIFA032.rp
 **1110/1110 filas** extraídas del PDF de ejemplo. El listado de ejemplo solo trae
 código + nombre; lote y vencimiento se completan en la previsualización editable.
 
-## Próximos pasos
+## App publicada
 
-1. **Hosting**: `cd app && npm run build && cd .. && firebase deploy --only hosting`
-   → `https://qrinventarios-73309.web.app`.
+**https://qrinventarios-73309.web.app** — PWA instalable. Redeploy:
+`cd app && npm run build && cd .. && firebase deploy --only hosting`.
 
 ## Cloud Functions (`functions/`) — desplegadas
 
