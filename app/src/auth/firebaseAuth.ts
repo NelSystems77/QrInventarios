@@ -12,7 +12,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { useSyncExternalStore } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UID_ADMIN_BOOTSTRAP, db as fs, firebaseAuth } from '../firebase';
 import type { RolGlobal, Usuario } from '../domain/types';
 import { repo } from '../data/repo';
@@ -48,21 +48,34 @@ async function alIniciarSesion(uid: string, email: string | null) {
     rolGlobal: esBootstrap ? 'ADMIN' : 'OPERADOR',
   };
 
+  const ref = doc(fs, 'usuarios', uid);
   let usuario = provisional;
-  let existeEnFirestore = false;
+  let errSync: string | null = null;
   try {
-    const snap = await getDoc(doc(fs, 'usuarios', uid));
+    const snap = await getDoc(ref);
+    let necesitaEscritura = !snap.exists();
     if (snap.exists()) {
-      existeEnFirestore = true;
       usuario = { id: uid, ...(snap.data() as Omit<Usuario, 'id'>) };
       if (esBootstrap && usuario.rolGlobal !== 'ADMIN') {
         usuario = { ...usuario, rolGlobal: 'ADMIN' };
-        existeEnFirestore = false; // forzar reescritura del rol
+        necesitaEscritura = true;
       }
     }
-  } catch {
-    /* Firestore no disponible: se sigue con el usuario provisional. */
+    // IMPORTANTE: el doc del usuario debe existir y ser legible ANTES de arrancar
+    // los listeners; varias reglas resuelven el rol con get(usuarios/{uid}).
+    if (necesitaEscritura) {
+      await setDoc(
+        ref,
+        { nombre: usuario.nombre, rolGlobal: usuario.rolGlobal },
+        { merge: true },
+      );
+    }
+  } catch (e) {
+    // Firestore no disponible: se sigue local con el usuario provisional.
+    errSync = (e as Error)?.message ?? 'Firestore no disponible';
   }
+
+  repo.aplicarDoc('usuarios', uid, usuario); // espejo local; ya está en Firestore
 
   iniciarFirestoreSync({
     usuarioId: uid,
@@ -74,14 +87,7 @@ async function alIniciarSesion(uid: string, email: string | null) {
     onConteosSesion: (sesionId) => reevaluarAlertasSesion(sesionId),
   });
 
-  // Con el sink ya activo: crear/actualizar el doc del usuario si hace falta.
-  if (!existeEnFirestore) {
-    repo.upsertUsuario(usuario); // el sink lo escribe en Firestore
-  } else {
-    repo.aplicarDoc('usuarios', uid, usuario); // ya está en Firestore, solo local
-  }
-
-  fijar({ estado: 'listo', uid, email, errorSync: null });
+  fijar({ estado: 'listo', uid, email, errorSync: errSync });
 }
 
 export function iniciarAuth() {

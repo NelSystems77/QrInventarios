@@ -47,9 +47,11 @@ service cloud.firestore {
       allow update, delete: if false; // historial inmutable
     }
 
-    // ---- Importaciones de PDF (Admin escribe; Admin/Auditor leen) ----
-    match /importaciones_pdf/{id}    { allow read: if esPrivilegiado(); allow write: if esAdmin(); }
-    match /importaciones_filas/{id}  { allow read: if esPrivilegiado(); allow write: if esAdmin(); }
+    // ---- Importaciones de PDF (Admin escribe; cualquier autenticado lee) ----
+    // El contenido es catálogo extraído, no dato sensible; leerlo sin get() evita
+    // fragilidad al iniciar sesión y coste por documento.
+    match /importaciones_pdf/{id}    { allow read: if signedIn(); allow write: if esAdmin(); }
+    match /importaciones_filas/{id}  { allow read: if signedIn(); allow write: if esAdmin(); }
 
     // ---- Usuarios ----
     match /usuarios/{uid} {
