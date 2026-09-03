@@ -9,6 +9,7 @@ import {
 } from '../../data/conteoService';
 import { useRepo } from '../../data/useRepo';
 import { hayDatosDemo, sembrarDemo } from '../../data/seed';
+import { MUESTRAS, hayLotesDeMuestra, sembrarLotesDeMuestra } from '../../data/muestras';
 
 export function SessionsPage() {
   useRepo();
@@ -75,6 +76,21 @@ export function SessionsPage() {
               }}
             >
               Cargar datos de demostración
+            </button>
+            <button
+              className="sm"
+              disabled={hayLotesDeMuestra()}
+              onClick={() => {
+                const n = sembrarLotesDeMuestra();
+                toast(
+                  n === 0
+                    ? 'Los lotes de muestra ya estaban cargados'
+                    : `${n} lotes de muestra añadidos al catálogo`,
+                );
+              }}
+              title={`Crea los ${MUESTRAS.length} productos/lotes de la carpeta muestras/`}
+            >
+              Cargar {MUESTRAS.length} lotes de muestra
             </button>
             <button
               className="sm danger"
