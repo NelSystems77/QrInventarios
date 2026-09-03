@@ -36,7 +36,7 @@ npm run build   # tsc -b && vite build (+ genera el service worker)
 | Repositorio local | `src/data/repo.ts` | fuente de verdad en el dispositivo; **toda** la persistencia pasa por aquí. `set`/`del` internos disparan el *sink* |
 | Casos de uso | `src/data/service.ts` (etiquetas), `src/data/conteoService.ts` (conteo) | |
 | Sincronización | `src/data/firestoreSync.ts` (espejo Firestore ↔ repo; `conteos`/`alertas`/`filas` acotados a la sesión/importación activa vía `useAmbito`) · `src/data/sync.ts` (`RemoteSync` + cola offline) | |
-| Cloud Functions | `functions/` (raíz) — `consolidarConteos`, `limpiarSesionEliminada`. Requieren Blaze. `functions/src/domain/` es copia de `app/src/domain/` (predeploy) | |
+| Cloud Functions | `functions/` (raíz) — `consolidarConteos`, `limpiarSesionEliminada`. Desplegadas (Blaze, Node 22, us-central1). `functions/src/domain/` es copia de `app/src/domain/` (predeploy) | |
 | Firebase | `src/firebase.ts` (init) · `src/auth/firebaseAuth.ts` (auth + `useSesion`/`useUsuarioActual`) | |
 | UI | `src/features/{auth,conteo,import,labels,admin}/` | páginas; `src/components/` compartidos |
 | PDF / QR | `src/lib/pdf/`, `src/lib/qr/` | `pdfjs-dist`, `qrcode`, `pdf-lib` |

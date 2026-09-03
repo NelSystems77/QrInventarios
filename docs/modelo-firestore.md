@@ -6,11 +6,12 @@
 > **acotados** a la sesión/importación activa (`setSesionActiva` / `setImportacionActiva`).
 > Colecciones **planas** (todas de nivel superior; `miembros` con id `<sesionId>__<uid>`).
 >
-> **Cloud Functions:** código listo en `functions/` pero **requiere plan Blaze** para
-> desplegar (`firebase deploy --only functions`). Mientras tanto, los dispositivos
-> ADMIN/AUDITOR recalculan `esVigente` y alertas en el cliente (`onConteosSesion` →
-> `reevaluarAlertasSesion`), y el borrado en cascada de sesiones se hace desde el
-> cliente del Admin (`eliminarSesion`).
+> **Cloud Functions:** DESPLEGADAS (plan Blaze, Node 22, 2ª gen, `us-central1`).
+> `consolidarConteos` escribe `esVigente` y las alertas de forma autoritativa;
+> `limpiarSesionEliminada` hace la cascada. Los dispositivos ADMIN/AUDITOR además
+> recalculan en el cliente (`onConteosSesion` → `reevaluarAlertasSesion`) para
+> respuesta inmediata / offline, y `eliminarSesion` borra en cascada desde el
+> cliente del Admin (la Function cubre el resto).
 >
 > **Índices:** ninguno compuesto es necesario hoy — las consultas usan solo filtros
 > de igualdad (`sesionId ==`, `usuarioId ==`, `importacionId ==`), que Firestore

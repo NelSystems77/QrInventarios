@@ -60,12 +60,12 @@ desde la misma pantalla con rol `OPERADOR`; el super admin los promueve.
 | 8 | PWA instalable + shell offline | ✅ `vite-plugin-pwa` |
 | — | Layout responsive (piso de bodega = teléfono) | ✅ |
 | — | Sync de `conteos`/`alertas`/`filas` acotado a la sesión/importación activa | ✅ `firestoreSync` + `useAmbito` |
-| — | Borrado en cascada de sesiones (conteos, miembros, alertas) | ✅ `eliminarSesion` (cliente) + Cloud Function de respaldo |
-| — | Cloud Functions (vigencia + alertas autoritativas, cascada) | ⚠️ código listo en `functions/`, requiere **plan Blaze** para desplegar |
+| — | Borrado en cascada de sesiones (conteos, miembros, alertas) | ✅ `eliminarSesion` (cliente) + Cloud Function `limpiarSesionEliminada` |
+| — | Cloud Functions: vigencia + alertas autoritativas server-side | ✅ **desplegadas** (`consolidarConteos`, `us-central1`, Node 22) |
 
-> Mientras no haya Cloud Functions: los dispositivos ADMIN/AUDITOR recalculan
-> `esVigente` y alertas en el cliente al llegar conteos de otros dispositivos.
-> Funciona si hay alguien con rol privilegiado y la app abierta.
+> Los dispositivos ADMIN/AUDITOR además recalculan `esVigente` y alertas en el
+> cliente (respuesta inmediata / offline); la Cloud Function es la versión
+> autoritativa y no depende de que nadie tenga la app abierta.
 
 > El PDF de productos se procesa 100% en el navegador y **no se archiva**: solo se
 > guardan las filas extraídas (`importaciones_pdf_filas`).
@@ -107,12 +107,12 @@ código + nombre; lote y vencimiento se completan en la previsualización editab
 
 ## Próximos pasos
 
-1. **Plan Blaze** → desplegar Cloud Functions: `firebase deploy --only functions`.
-   Da la versión autoritativa de `esVigente` + alertas y la cascada de borrado,
-   sin depender de que un dispositivo privilegiado esté online.
-2. **Hosting**: `cd app && npm run build && cd .. && firebase deploy --only hosting`.
+1. **Hosting**: `cd app && npm run build && cd .. && firebase deploy --only hosting`
+   → `https://qrinventarios-73309.web.app`.
 
-## Cloud Functions (`functions/`)
+## Cloud Functions (`functions/`) — desplegadas
+
+Proyecto en plan **Blaze**. Node 22, 2ª gen, `us-central1`.
 
 - `consolidarConteos` — `onDocumentWritten('conteos/{id}')`: recalcula `esVigente`
   de todo el grupo y sincroniza las alertas de la sesión. Idempotente, con punto fijo.
@@ -120,3 +120,4 @@ código + nombre; lote y vencimiento se completan en la previsualización editab
 
 La lógica de negocio se comparte con la app: `functions/src/domain/` se **copia**
 de `app/src/domain/` en el predeploy (`functions/sync-domain.mjs`). No editar a mano.
+Redeploy: `firebase deploy --only functions`.
