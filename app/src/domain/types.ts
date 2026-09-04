@@ -79,6 +79,11 @@ export interface Usuario {
   id: UUID;
   nombre: string;
   rolGlobal: RolGlobal;
+  /** Correo de acceso; se persiste al iniciar sesión y al crear la cuenta. */
+  email?: string;
+  /** Fecha de caducidad ISO 'YYYY-MM-DD'. Ausente = sin caducidad. Pasada esa
+   *  fecha la Cloud Function deshabilita la cuenta y el login la rechaza. */
+  caducaEn?: string;
 }
 
 export type EstadoSesion = 'ACTIVO' | 'CERRADO';

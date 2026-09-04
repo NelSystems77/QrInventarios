@@ -23,5 +23,6 @@ firestore-debug.log
 .DS_Store
 .vite/
 *.local
+.claude/settings.local.json
 
 dev-dist/

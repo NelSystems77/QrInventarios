@@ -1,17 +1,16 @@
-// Genera 15 etiquetas QR de muestra a partir de ejemploParaQr.pdf para pruebas.
+// Genera las etiquetas QR de muestra para probar el flujo de conteo.
 //
 // Salidas:
 //   muestras/qr-NN-<codigo>.png     — un PNG por producto
-//   muestras/muestras-hoja.pdf      — hoja imprimible con las 15
+//   muestras/muestras-hoja.pdf      — hoja imprimible con todas
 //   muestras/README.md              — instrucciones
 //   app/src/data/muestras.json      — datos para el botón "cargar lotes de muestra"
 //
 // Ejecutar:  node app/scripts/generar-muestras.mjs   (desde la raíz del repo)
 
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import QRCode from 'qrcode';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,46 +19,27 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = join(root, 'muestras');
 mkdirSync(OUT, { recursive: true });
 
-const CANTIDAD = 15;
 const NOMBRE_MAX = 60;
 
-// ── 1. Extraer productos del PDF (mismo criterio que app/src/lib/pdf) ──
-const data = new Uint8Array(readFileSync(join(root, 'ejemploParaQr.pdf')));
-const pdf = await getDocument({ data }).promise;
-const lineas = [];
-for (let p = 1; p <= pdf.numPages; p++) {
-  const content = await (await pdf.getPage(p)).getTextContent();
-  const items = content.items
-    .filter((it) => 'str' in it && it.str.trim())
-    .map((it) => ({ x: it.transform[4], y: it.transform[5], s: it.str }))
-    .sort((a, b) => b.y - a.y || a.x - b.x);
-  let cur = null;
-  for (const it of items) {
-    if (!cur || Math.abs(cur.y - it.y) > 2.5) {
-      cur = { y: it.y, parts: [it] };
-      lineas.push(cur);
-    } else cur.parts.push(it);
-  }
-}
-const RE = /(\d-\d{2}-\d{2}-\d{4})\s+([A-Z]{2})\s+(.+?)\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s*$/;
-const vistos = new Set();
-const productos = [];
-for (const l of lineas) {
-  const txt = l.parts
-    .sort((a, b) => a.x - b.x)
-    .map((p) => p.s)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const m = txt.match(RE);
-  if (!m) continue;
-  const codigo = m[1];
-  const nombre = m[3].replace(/[.,;:\s]+$/, '').trim();
-  if (vistos.has(codigo) || nombre.length < 4) continue;
-  vistos.add(codigo);
-  productos.push({ codigo, nombre });
-  if (productos.length === CANTIDAD) break;
-}
+// ── 1. Catálogo de muestra (código + nombre tal como se registran en la app) ──
+// Editar esta lista para cambiar qué productos llevan QR de muestra.
+const productos = [
+  ['1-10-16-0010', 'PARACETAMOL 500 MG, TABLETA'],
+  ['1-10-09-0020', 'ACETAZOLAMIDA 250 MG. TABLETAS'],
+  ['1-10-11-0030', 'ACIDO ACETIL SALICILICO 100 MG. T'],
+  ['1-10-41-0043', 'MICOFENOLATO DE MOFETILO 250'],
+  ['1-10-04-0045', 'ABACAVIR 600 MG (COMO SULFATO) C'],
+  ['1-10-04-0046', 'ACICLOVIR 400 MG. TABLETAS O TAB'],
+  ['1-10-42-0070', 'ACIDO ASCORBICO 500 MG. O ACIDO'],
+  ['1-10-13-0080', 'ACIDO FOLICO 1 MG, TABLETAS RANU'],
+  ['1-10-50-0085', 'FOLINATO (COMO SAL CALCICA)15 M'],
+  ['1-10-46-0089', 'ACITRETINA 25 MG, CÁPSULA.'],
+  ['1-10-28-0090', 'VALPROATO SEMISODICO EQUIVALE'],
+  ['1-10-32-0095', 'ACIDO URSODEOXICOLICO 250 MG, C'],
+  ['1-10-42-0100', 'ALFACALCIDOL 0.25 MCG CAPSULAS D'],
+  ['1-10-42-0110', 'ALFACALCIDOL 1 MCG. CAPSULAS DE'],
+  ['1-10-15-0130', 'ALOPURINOL 300 MG. TABLETAS.'],
+].map(([codigo, nombre]) => ({ codigo, nombre }));
 
 // ── 2. Construir registros + payload QR (idéntico a app/src/lib/qr/payload.ts) ──
 const registros = productos.map((p, i) => {
@@ -142,7 +122,8 @@ writeFileSync(
   join(OUT, 'README.md'),
   `# Etiquetas QR de muestra
 
-15 códigos QR generados desde \`ejemploParaQr.pdf\` para probar el flujo de conteo.
+${registros.length} códigos QR para probar el flujo de conteo. La lista de productos
+se define en \`app/scripts/generar-muestras.mjs\`.
 
 ## Archivos
 

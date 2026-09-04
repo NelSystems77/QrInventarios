@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { signIn, signUp } from '../../auth/firebaseAuth';
+import { signIn, signUp, useSesion } from '../../auth/firebaseAuth';
 
 export function LoginPage() {
+  const { aviso } = useSesion();
   const [modo, setModo] = useState<'entrar' | 'crear'>('entrar');
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
@@ -42,6 +43,12 @@ export function LoginPage() {
           <h1 style={{ fontSize: '1.15rem', margin: '.5rem 0 0' }}>QR Inventarios</h1>
           <p className="muted" style={{ margin: 0, fontSize: '.8rem' }}>by NelSystems</p>
         </div>
+
+        {aviso && !error && (
+          <p className="badge warn" style={{ display: 'block', marginBottom: '.6rem' }}>
+            {aviso}
+          </p>
+        )}
 
         {modo === 'crear' && (
           <label>

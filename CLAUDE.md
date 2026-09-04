@@ -36,7 +36,7 @@ npm run build   # tsc -b && vite build (+ genera el service worker)
 | Repositorio local | `src/data/repo.ts` | fuente de verdad en el dispositivo; **toda** la persistencia pasa por aquí. `set`/`del` internos disparan el *sink* |
 | Casos de uso | `src/data/service.ts` (etiquetas), `src/data/conteoService.ts` (conteo) | |
 | Sincronización | `src/data/firestoreSync.ts` (espejo Firestore ↔ repo; `conteos`/`alertas`/`filas` acotados a la sesión/importación activa vía `useAmbito`) · `src/data/sync.ts` (`RemoteSync` + cola offline) | |
-| Cloud Functions | `functions/` (raíz) — `consolidarConteos`, `limpiarSesionEliminada`. Desplegadas (Blaze, Node 22, us-central1). `functions/src/domain/` es copia de `app/src/domain/` (predeploy) | |
+| Cloud Functions | `functions/` (raíz) — `consolidarConteos`, `limpiarSesionEliminada` (desplegadas); `administrarUsuarios` (onCall: CRUD de cuentas con Admin SDK), `revisarCaducidades` (onSchedule: deshabilita cuentas vencidas). Blaze, Node 22, us-central1. `functions/src/domain/` es copia de `app/src/domain/` (predeploy) | |
 | Firebase | `src/firebase.ts` (init) · `src/auth/firebaseAuth.ts` (auth + `useSesion`/`useUsuarioActual`) | |
 | UI | `src/features/{auth,conteo,import,labels,admin}/` | páginas; `src/components/` compartidos |
 | PDF / QR | `src/lib/pdf/`, `src/lib/qr/` | `pdfjs-dist`, `qrcode`, `pdf-lib` |
@@ -71,8 +71,15 @@ solo el repo local.
 
 ## Auth y roles
 
-`admin@nelsystems.com` (UID de bootstrap) se auto-promueve a ADMIN y ve
-*Administración → Usuarios* para cambiar roles. Quien se registra nace `OPERADOR`.
-Un `OPERADOR` solo cuenta en las sesiones donde un ADMIN lo asignó con un rol
-(`CONTEO_1/2`, `MUESTREO`). Crear cuentas de terceros sin auto-registro necesitaría
-una Cloud Function con Admin SDK.
+`admin@nelsystems.com` (UID de bootstrap) se auto-promueve a ADMIN. **Cualquier
+ADMIN** ve *Administración → Usuarios* (`features/admin/UsersPage.tsx`) y desde ahí
+crea cuentas, cambia el rol global, fija `caducaEn` o elimina, todo vía la Cloud
+Function `administrarUsuarios` (Admin SDK; la UI ya no escribe `usuarios` directo).
+La cuenta de bootstrap es "principal": no se puede eliminar, degradar ni caducar.
+Quien se registra nace `OPERADOR`. Un `OPERADOR` solo cuenta en las sesiones donde
+un ADMIN lo asignó con un rol (`CONTEO_1/2`, `MUESTREO`).
+
+**Caducidad**: `Usuario.caducaEn` ('YYYY-MM-DD'). El login la rechaza
+(`alIniciarSesion`), `firestore.rules` (`vigente()`) le quita poderes, y
+`revisarCaducidades` (diaria) deshabilita la cuenta en Auth. `administrarUsuarios`
+además aplica `disabled` de inmediato al cambiar la fecha.

@@ -15,6 +15,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 const env = import.meta.env;
 
@@ -41,6 +42,9 @@ export const db = initializeFirestore(firebaseApp, {
 
 export const firebaseAuth = getAuth(firebaseApp);
 void setPersistence(firebaseAuth, browserLocalPersistence);
+
+// Cloud Functions callable (misma región que los triggers).
+export const funcs = getFunctions(firebaseApp, 'us-central1');
 
 /** UID que se promueve a ADMIN la primera vez que entra (bootstrap del sistema). */
 export const UID_ADMIN_BOOTSTRAP = 'dbpxHr426fXCqBaJlaEygxPuEv92';

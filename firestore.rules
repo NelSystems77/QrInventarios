@@ -19,11 +19,20 @@ service cloud.firestore {
     function rolGlobal() {
       return usuario().rolGlobal;
     }
+    // Cuenta no vencida: sin `caducaEn`, o la fecha ('YYYY-MM-DD') aún no llegó.
+    // El respaldo autoritativo es `disabled` en Auth (Cloud Function diaria).
+    function vigente() {
+      return !('caducaEn' in usuario())
+        || request.time < timestamp.date(
+             int(usuario().caducaEn[0:4]),
+             int(usuario().caducaEn[5:7]),
+             int(usuario().caducaEn[8:10]));
+    }
     function esPrivilegiado() {
-      return signedIn() && rolGlobal() in ['ADMIN', 'AUDITOR'];
+      return signedIn() && vigente() && rolGlobal() in ['ADMIN', 'AUDITOR'];
     }
     function esAdmin() {
-      return signedIn() && rolGlobal() == 'ADMIN';
+      return signedIn() && vigente() && rolGlobal() == 'ADMIN';
     }
     function miembroPath(sesionId) {
       return /databases/$(database)/documents/miembros/$(sesionId + '__' + request.auth.uid);
@@ -57,10 +66,12 @@ service cloud.firestore {
     match /usuarios/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
-      // El propio usuario puede editar su nombre; el rol solo lo cambia un Admin.
+      // El propio usuario puede editar su nombre/correo; el rol y la caducidad
+      // solo los cambia un Admin (vía Cloud Function con Admin SDK).
       allow update: if esAdmin()
         || (request.auth.uid == uid
-            && request.resource.data.rolGlobal == resource.data.rolGlobal);
+            && request.resource.data.rolGlobal == resource.data.rolGlobal
+            && request.resource.data.get('caducaEn', '') == resource.data.get('caducaEn', ''));
       allow delete: if esAdmin();
     }
 

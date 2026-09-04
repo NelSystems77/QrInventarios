@@ -17,14 +17,17 @@ Especificación completa en [`especificacion_qr_inventarios_nelsystems_v2.md`](e
 | | |
 |---|---|
 | Project ID | `qrinventarios-73309` |
-| Super admin | `admin@nelsystems.com` (UID `dbpxHr426fXCqBaJlaEygxPuEv92`) — se auto-promueve a ADMIN al entrar; gestiona roles en **Administración → Usuarios** |
+| Super admin | `admin@nelsystems.com` (UID `dbpxHr426fXCqBaJlaEygxPuEv92`) — se auto-promueve a ADMIN al entrar. Cuenta "principal": no se puede eliminar ni degradar ni caducar |
+| Gestión de usuarios | **cualquier ADMIN** ve **Administración → Usuarios**: crear cuentas, cambiar rol global, fijar fecha de caducidad, eliminar. Vía Cloud Function `administrarUsuarios` (Admin SDK) |
 | Config web | en `src/firebase.ts` (la config web de Firebase no es secreta) |
 | Desplegar reglas | `firebase deploy --only firestore:rules` |
 | Desplegar app | `cd app && npm run build && cd .. && firebase deploy --only hosting` → `https://qrinventarios-73309.web.app` |
 
-Un usuario nuevo se registra en la pantalla de acceso (rol `OPERADOR` por defecto);
-el super admin le cambia el rol y lo asigna a sesiones. Crear cuentas de terceros
-sin auto-registro requeriría una Cloud Function con Admin SDK.
+Un usuario nuevo se registra en la pantalla de acceso (rol `OPERADOR` por defecto),
+o un ADMIN le crea la cuenta desde **Administración → Usuarios** (correo + contraseña
+temporal). El ADMIN cambia roles, fija caducidades y lo asigna a sesiones. Una cuenta
+cuya `caducaEn` ya pasó no puede iniciar sesión y la Cloud Function `revisarCaducidades`
+la deshabilita en Auth.
 
 ## Correr en local
 
@@ -117,6 +120,11 @@ Proyecto en plan **Blaze**. Node 22, 2ª gen, `us-central1`.
 - `consolidarConteos` — `onDocumentWritten('conteos/{id}')`: recalcula `esVigente`
   de todo el grupo y sincroniza las alertas de la sesión. Idempotente, con punto fijo.
 - `limpiarSesionEliminada` — `onDocumentDeleted('sesiones/{id}')`: borra en cascada.
+- `administrarUsuarios` — `onCall`: crear / actualizar (rol, nombre, caducidad) /
+  eliminar cuentas. Guard: quien llama debe ser ADMIN vigente. Protege la cuenta
+  principal. Al eliminar borra `usuarios/{uid}` + sus `miembros`; conserva los conteos.
+- `revisarCaducidades` — `onSchedule('every 24 hours')`: deshabilita en Auth las
+  cuentas con `caducaEn` vencida y re-habilita las que dejaron de estarlo.
 
 La lógica de negocio se comparte con la app: `functions/src/domain/` se **copia**
 de `app/src/domain/` en el predeploy (`functions/sync-domain.mjs`). No editar a mano.

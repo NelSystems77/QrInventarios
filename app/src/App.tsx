@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { ToastHost } from './components/toast';
 import { UserSwitcher } from './components/UserSwitcher';
 import { SyncStatus } from './components/SyncStatus';
-import { esSuperAdmin, useSesion } from './auth/firebaseAuth';
+import { useSesion, useUsuarioActual } from './auth/firebaseAuth';
 import { LoginPage } from './features/auth/LoginPage';
 import { SessionsPage } from './features/conteo/SessionsPage';
 import { SessionPage } from './features/conteo/SessionPage';
@@ -28,7 +28,7 @@ const ReprintPage = lazy(() =>
   import('./features/labels/ReprintPage').then((m) => ({ default: m.ReprintPage })),
 );
 
-function Sidebar({ superAdmin }: { superAdmin: boolean }) {
+function Sidebar({ admin }: { admin: boolean }) {
   return (
     <nav className="sidebar">
       <div className="brand">
@@ -61,7 +61,7 @@ function Sidebar({ superAdmin }: { superAdmin: boolean }) {
         Reimprimir
       </NavLink>
 
-      {superAdmin && (
+      {admin && (
         <>
           <div className="nav-section">Administración</div>
           <NavLink to="/usuarios" className="nav-link">
@@ -80,6 +80,7 @@ function Sidebar({ superAdmin }: { superAdmin: boolean }) {
 
 export default function App() {
   const sesion = useSesion();
+  const usuario = useUsuarioActual();
 
   if (sesion.estado === 'cargando') {
     return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
@@ -93,11 +94,11 @@ export default function App() {
     );
   }
 
-  const superAdmin = esSuperAdmin(sesion.uid);
+  const admin = usuario?.rolGlobal === 'ADMIN';
 
   return (
     <div className="app">
-      <Sidebar superAdmin={superAdmin} />
+      <Sidebar admin={admin} />
       <main className="content">
         {sesion.errorSync && (
           <p className="badge warn" style={{ display: 'block', marginBottom: '1rem' }}>
@@ -117,7 +118,7 @@ export default function App() {
             <Route path="/catalogo" element={<CatalogPage />} />
             <Route path="/generar" element={<GeneratePage />} />
             <Route path="/reimprimir" element={<ReprintPage />} />
-            {superAdmin && <Route path="/usuarios" element={<UsersPage />} />}
+            {admin && <Route path="/usuarios" element={<UsersPage />} />}
           </Routes>
         </Suspense>
       </main>

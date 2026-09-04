@@ -29,9 +29,17 @@ interface Estado {
   uid: string | null;
   email: string | null;
   errorSync: string | null;
+  /** Motivo del último cierre de sesión (p. ej. cuenta vencida), visible en login. */
+  aviso: string | null;
 }
 
-let estado: Estado = { estado: 'cargando', uid: null, email: null, errorSync: null };
+let estado: Estado = {
+  estado: 'cargando',
+  uid: null,
+  email: null,
+  errorSync: null,
+  aviso: null,
+};
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 
@@ -46,6 +54,7 @@ async function alIniciarSesion(uid: string, email: string | null) {
     id: uid,
     nombre: email ?? 'Usuario',
     rolGlobal: esBootstrap ? 'ADMIN' : 'OPERADOR',
+    ...(email ? { email } : {}),
   };
 
   const ref = doc(fs, 'usuarios', uid);
@@ -60,19 +69,36 @@ async function alIniciarSesion(uid: string, email: string | null) {
         usuario = { ...usuario, rolGlobal: 'ADMIN' };
         necesitaEscritura = true;
       }
+      // Backfill del correo para cuentas creadas antes de guardarlo.
+      if (email && !usuario.email) {
+        usuario = { ...usuario, email };
+        necesitaEscritura = true;
+      }
     }
     // IMPORTANTE: el doc del usuario debe existir y ser legible ANTES de arrancar
     // los listeners; varias reglas resuelven el rol con get(usuarios/{uid}).
     if (necesitaEscritura) {
       await setDoc(
         ref,
-        { nombre: usuario.nombre, rolGlobal: usuario.rolGlobal },
+        {
+          nombre: usuario.nombre,
+          rolGlobal: usuario.rolGlobal,
+          ...(usuario.email ? { email: usuario.email } : {}),
+        },
         { merge: true },
       );
     }
   } catch (e) {
     // Firestore no disponible: se sigue local con el usuario provisional.
     errSync = (e as Error)?.message ?? 'Firestore no disponible';
+  }
+
+  // Cuenta con fecha de caducidad ya vencida: no se permite iniciar sesión.
+  // (La Cloud Function `revisarCaducidades` además deshabilita la cuenta en Auth.)
+  if (usuario.caducaEn && Date.parse(usuario.caducaEn) <= Date.now()) {
+    fijar({ aviso: `Tu cuenta venció el ${usuario.caducaEn}. Contacta a un administrador.` });
+    await fbSignOut(firebaseAuth); // dispara onAuthStateChanged(null) → estado 'anon'
+    return;
   }
 
   repo.aplicarDoc('usuarios', uid, usuario); // espejo local; ya está en Firestore
@@ -97,16 +123,19 @@ export function iniciarAuth() {
     } else {
       detenerFirestoreSync();
       repo.reset(); // limpia la caché local; el próximo login re-hidrata desde Firestore
+      // `aviso` se conserva (lo pudo fijar `alIniciarSesion` antes de cerrar sesión).
       fijar({ estado: 'anon', uid: null, email: null });
     }
   });
 }
 
 export async function signIn(email: string, password: string) {
+  fijar({ aviso: null });
   await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
 }
 
 export async function signUp(email: string, password: string, nombre: string) {
+  fijar({ aviso: null });
   const cred = await createUserWithEmailAndPassword(
     firebaseAuth,
     email.trim(),
