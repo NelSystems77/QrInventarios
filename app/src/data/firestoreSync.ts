@@ -69,11 +69,18 @@ function suscribir(
       aplicarRemoto(() => {
         enLote(() => {
           for (const ch of snap.docChanges()) {
-            repo.aplicarDoc(
-              col,
-              ch.doc.id,
-              ch.type === 'removed' ? null : ch.doc.data(),
-            );
+            if (ch.type === 'removed') {
+              repo.aplicarDoc(col, ch.doc.id, null);
+              continue;
+            }
+            const data = ch.doc.data();
+            // Los docs de `usuarios` se guardan sin el campo `id` (la Cloud
+            // Function y el alta al iniciar sesión solo escriben nombre/rol/…).
+            // Sin `id`, la UI no distingue una fila de usuario de otra
+            // (p. ej. asignar rol en una sesión afectaba a todos). El id del
+            // doc ES el uid, que ES `Usuario.id`, así que lo reponemos aquí.
+            if (col === 'usuarios') data.id = ch.doc.id;
+            repo.aplicarDoc(col, ch.doc.id, data);
           }
         });
       });

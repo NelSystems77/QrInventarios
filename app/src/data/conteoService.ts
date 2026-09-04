@@ -73,6 +73,25 @@ export function asignarMiembro(
   return m;
 }
 
+/**
+ * Borra asignaciones de sesión inválidas: docs `miembros` sin `usuarioId` (los
+ * `<sesionId>__undefined` que generó un bug antiguo al asignar rol con el id de
+ * usuario sin resolver). Solo mira el campo `usuarioId`, así que es seguro
+ * aunque el catálogo de usuarios aún no haya terminado de sincronizar.
+ * Idempotente; solo tiene efecto donde hay permiso para escribir `miembros`
+ * (ADMIN/AUDITOR). Devuelve cuántos borró.
+ */
+export function purgarMiembrosHuerfanos(sesionId: string): number {
+  const huerfanos = repo
+    .miembrosDeSesion(sesionId)
+    .filter((m) => !m.usuarioId);
+  if (huerfanos.length === 0) return 0;
+  enLote(() => {
+    for (const m of huerfanos) repo.eliminarDoc('miembros', m.id);
+  });
+  return huerfanos.length;
+}
+
 export function crearUbicacion(nombre: string): Ubicacion {
   const u: Ubicacion = { id: uuid(), nombre };
   repo.upsertUbicacion(u);

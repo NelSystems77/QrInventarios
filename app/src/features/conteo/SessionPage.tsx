@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '../../components/toast';
 import { useUsuarioActual } from '../../auth/firebaseAuth';
@@ -10,6 +10,7 @@ import {
   crearUbicacion,
   eliminarSesion,
   progresoSesion,
+  purgarMiembrosHuerfanos,
   viewerDeSesion,
 } from '../../data/conteoService';
 import { useRepo } from '../../data/useRepo';
@@ -21,11 +22,20 @@ const ROLES: RolConteo[] = ['CONTEO_1', 'CONTEO_2', 'MUESTREO'];
 export function SessionPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
-  useRepo();
+  const repoVer = useRepo();
   useSesionActiva(id);
   const usuario = useUsuarioActual();
   const sesion = repo.sesion(id);
   const [nuevaUbic, setNuevaUbic] = useState('');
+
+  const uid = usuario?.id;
+  useEffect(() => {
+    if (!id || !uid) return;
+    const rg = repo.usuario(uid)?.rolGlobal;
+    if (rg !== 'ADMIN' && rg !== 'AUDITOR') return;
+    const n = purgarMiembrosHuerfanos(id);
+    if (n > 0) toast(`Se limpiaron ${n} asignación(es) de sesión inválida(s)`);
+  }, [id, uid, repoVer]);
 
   if (!sesion || !usuario) return <p>Sesión no encontrada.</p>;
 
