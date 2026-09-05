@@ -4,6 +4,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    // El service worker (workbox) precachea TODOS los chunks JS, así que los
+    // `<link rel="modulepreload">` que inyecta Vite son redundantes y solo
+    // generan avisos en consola ("cross-world service worker resource mismatch"
+    // / "preloaded but not used"). Se desactivan.
+    modulePreload: false,
+  },
   plugins: [
     react(),
     VitePWA({
