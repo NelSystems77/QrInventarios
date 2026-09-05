@@ -11,12 +11,12 @@ import {
   type Firestore,
   type Query,
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   query,
   setDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { db as fs } from '../firebase';
 import type { Conteo } from '../domain/types';
@@ -117,19 +117,41 @@ export function iniciarFirestoreSync(opts: OpcionesSync) {
   opciones = opts;
   onConteosCambian = opts.privilegiado ? (opts.onConteosSesion ?? null) : null;
 
-  // 1) Local → Firestore
+  // 1) Local → Firestore. Las escrituras se acumulan y se envían en lotes
+  //    (`writeBatch`) en el siguiente microtask: una confirmación de importación
+  //    genera miles de `set` y hacer un `setDoc` suelto por cada uno satura el hilo
+  //    y Firestore. Clave `col/id` → última versión gana dentro del mismo tick.
+  const buffer = new Map<string, { col: Coleccion; id: string; data: unknown }>();
+  let flushProgramado = false;
+
+  const enviarBuffer = () => {
+    flushProgramado = false;
+    if (!activo || buffer.size === 0) return;
+    const items = [...buffer.values()];
+    buffer.clear();
+    const LIMITE = 400; // writeBatch admite 500 operaciones
+    for (let i = 0; i < items.length; i += LIMITE) {
+      const lote = writeBatch(fs as Firestore);
+      for (const it of items.slice(i, i + LIMITE)) {
+        const ref = doc(fs as Firestore, FS[it.col], it.id);
+        if (it.data === null) lote.delete(ref);
+        else lote.set(ref, aFirestore(it.col, it.data) as object);
+      }
+      lote.commit().catch((e) => opts.onError?.(e));
+    }
+  };
+
   setSink((col, id, docData) => {
     // Las `alertas` solo las puede escribir un dispositivo privilegiado
     // (firestore.rules). En un dispositivo de contador se materializan localmente
     // para feedback inmediato; la versión en Firestore la ponen los dispositivos
     // ADMIN/AUDITOR y —de forma autoritativa— la Cloud Function `consolidarConteos`.
     if (col === 'alertas' && !opts.privilegiado) return;
-    const ref = doc(fs as Firestore, FS[col], id);
-    const p =
-      docData === null
-        ? deleteDoc(ref)
-        : setDoc(ref, aFirestore(col, docData) as object);
-    p.catch((e) => opts.onError?.(e));
+    buffer.set(`${col}/${id}`, { col, id, data: docData });
+    if (!flushProgramado) {
+      flushProgramado = true;
+      queueMicrotask(enviarBuffer);
+    }
   });
 
   // 2) Firestore → local — colecciones acotadas (catálogo + equipo)

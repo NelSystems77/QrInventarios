@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from '../../components/toast';
-import { repo } from '../../data/repo';
+import { enLote, repo } from '../../data/repo';
 import {
   confirmarImportacion,
   descartarImportacion,
@@ -60,7 +60,9 @@ export function PreviewPage() {
   }
 
   function persistir() {
-    for (const f of filas) repo.actualizarFila(f);
+    enLote(() => {
+      for (const f of filas) repo.actualizarFila(f);
+    });
   }
 
   function confirmar() {
