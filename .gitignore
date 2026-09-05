@@ -25,4 +25,8 @@ firestore-debug.log
 *.local
 .claude/settings.local.json
 
+# reportes/muestras locales con datos reales (no versionar)
+rptsifa032.pdf
+RptSIFA032*.pdf
+
 dev-dist/

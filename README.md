@@ -52,6 +52,9 @@ desde la misma pantalla con rol `OPERADOR`; el super admin los promueve.
 | 7.1.5 / 7.5 | Reimpresión individual con motivo e historial | ✅ `features/labels/ReprintPage` |
 | 2.x | Catálogo `productos` / `lotes` (N lotes por producto) | ✅ `domain/types.ts` + `data/repo.ts` |
 | 2.2 | Sesiones, ubicaciones, captura de conteos con corrección | ✅ `features/conteo` |
+| 2.2 | Corregir un conteo equivocado desde la UI (documento nuevo `corrigeConteoId`, versión anterior queda "reemplazada"); historial por lote para Admin/Auditor en el consolidado | ✅ `features/conteo/CountPage` + `ConsolidatedPage` |
+| 2.2 | Ubicación del conteo escrita/elegida por el contador (campo opcional siempre visible + sugerencias del Admin y de conteos previos) | ✅ `Conteo.ubicacion`, `ubicacionesSugeridas()` |
+| — | Vista por perfil: OPERADOR/AUDITOR ven solo "Conteo" (menú Etiquetado y Usuarios solo Admin); "Mis sesiones asignadas" con acceso directo a contar; aviso claro si no hay rol asignado | ✅ `App.tsx`, `SessionsPage`, `SessionPage` |
 | 2.4 / 3 | Triangulación y consolidado + regla de stock oficial (**Stock físico** en la UI) | ✅ `domain/triangulacion.ts` (con tests) |
 | — | **Stock SIFA**: Admin carga el reporte RptSIFA032 en la sesión → existencia por código → reconciliación *Stock SIFA vs físico* en el consolidado | ✅ `domain/reconciliacion.ts` (con tests), `stock_sifa` en Firestore |
 | 6 | Sync offline: `cliente_uuid` idempotente, vigencia derivada, alerta al auditor | ✅ `domain/sincronizacion.ts` (con tests) |

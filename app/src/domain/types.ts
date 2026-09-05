@@ -119,11 +119,17 @@ export interface Conteo {
   sesionId: UUID;
   loteId: UUID;
   ubicacionId?: UUID;
+  /** Ubicación física del conteo, escrita/elegida por el contador (Ej: 'Cámara 1',
+   *  'Despacho'). Opcional. Es la etiqueta que muestra la UI; `ubicacionId` solo se
+   *  llena si el texto coincide con una `Ubicacion` predefinida. */
+  ubicacion?: string;
   usuarioId: UUID;
   rolConteo: RolConteo;
   cantidad: number;
   ingresoManual: boolean; // fallback sin QR legible (spec 5)
   esVigente: boolean; // FALSE = corregido / reemplazado por una versión más reciente
+  /** Si esta versión corrige a otra: id del conteo al que reemplaza (trazabilidad). */
+  corrigeConteoId?: UUID;
   clienteUuid: UUID; // generado en el dispositivo — dedupe idempotente (spec 6.1)
   fechaRegistroLocal: string; // hora del dispositivo al capturar
   fechaSync?: string; // hora del servidor al recibir

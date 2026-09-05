@@ -88,6 +88,7 @@ export function SessionPage() {
   const abiertas = alertas.filter((a) => !a.atendida);
 
   const miRol = viewer.rolConteo;
+  const sinRol = !priv && !miRol;
 
   return (
     <>
@@ -104,15 +105,24 @@ export function SessionPage() {
         </button>
       </div>
 
+      {sinRol && (
+        <p className="badge warn" style={{ display: 'block', margin: '1rem 0' }}>
+          Aún no tienes un rol de conteo asignado en esta sesión. Un administrador
+          debe asignarte CONTEO 1, CONTEO 2 o MUESTREO para que puedas contar.
+        </p>
+      )}
+
       <div className="row" style={{ margin: '1rem 0' }}>
         {miRol && sesion.estado === 'ACTIVO' && (
           <button className="primary" onClick={() => nav(`/sesiones/${id}/contar`)}>
             Escanear y contar ({miRol})
           </button>
         )}
-        <button onClick={() => nav(`/sesiones/${id}/consolidado`)}>
-          Ver consolidado
-        </button>
+        {!sinRol && (
+          <button onClick={() => nav(`/sesiones/${id}/consolidado`)}>
+            Ver consolidado
+          </button>
+        )}
         {viewer.rolGlobal === 'ADMIN' && sesion.estado === 'ACTIVO' && (
           <button
             className="danger"
@@ -148,6 +158,8 @@ export function SessionPage() {
         )}
       </div>
 
+      {!sinRol && (
+        <>
       <h2>Progreso</h2>
       <div className="stat">
         <div>
@@ -177,6 +189,8 @@ export function SessionPage() {
           <div className="l">auditados (P3)</div>
         </div>
       </div>
+        </>
+      )}
 
       {priv && (
         <>
@@ -343,6 +357,10 @@ export function SessionPage() {
           </div>
 
           <h2>Ubicaciones</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Sugerencias para el campo «Ubicación» del conteo (Ej. Cámara 1,
+            Despacho). El contador también puede escribir una que no esté aquí.
+          </p>
           <div className="row">
             <input
               type="text"

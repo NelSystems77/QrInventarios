@@ -4,11 +4,16 @@ import { toast } from '../../components/toast';
 import { QrScanner, soportaEscaneoCamara } from '../../components/QrScanner';
 import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { ahora, repo, uuid } from '../../data/repo';
-import { idsVigentes, registrarConteo, viewerDeSesion } from '../../data/conteoService';
+import {
+  idsVigentes,
+  registrarConteo,
+  ubicacionesSugeridas,
+  viewerDeSesion,
+} from '../../data/conteoService';
 import { useRepo } from '../../data/useRepo';
 import { useSesionActiva } from '../../data/useAmbito';
 import { parsePayload } from '../../lib/qr/payload';
-import type { Lote } from '../../domain/types';
+import type { Conteo, Lote } from '../../domain/types';
 
 type Objetivo =
   | { tipo: 'lote'; lote: Lote; escaneado: boolean }
@@ -28,7 +33,10 @@ export function CountPage() {
   const [q, setQ] = useState('');
   const [objetivo, setObjetivo] = useState<Objetivo | null>(null);
   const [cantidad, setCantidad] = useState('');
-  const [ubicacionId, setUbicacionId] = useState('');
+  const [ubicacion, setUbicacion] = useState('');
+  const [corrigiendo, setCorrigiendo] = useState<{ id: string; previa: number } | null>(
+    null,
+  );
   const [nuevo, setNuevo] = useState({ codigo: '', nombre: '', lote: '—' });
 
   const viewer = usuario ? viewerDeSesion(id, usuario.id) : null;
@@ -62,6 +70,7 @@ export function CountPage() {
   }, [id, v, viewer]);
 
   const vigentes = useMemo(() => idsVigentes(id), [id, v]);
+  const sugerencias = useMemo(() => ubicacionesSugeridas(id), [id, v]);
 
   if (!sesion || !usuario || !viewer) return <p>Sesión no encontrada.</p>;
   if (!viewer.rolConteo)
@@ -76,7 +85,22 @@ export function CountPage() {
   function elegirLote(lote: Lote, escaneado: boolean) {
     setObjetivo({ tipo: 'lote', lote, escaneado });
     setCantidad('');
+    setCorrigiendo(null);
     setQ('');
+  }
+
+  function corregirConteo(c: Conteo) {
+    const lote = repo.lotesActivos().find((l) => l.id === c.loteId);
+    if (!lote) {
+      toast('Ese lote ya no está en el catálogo');
+      return;
+    }
+    setObjetivo({ tipo: 'lote', lote, escaneado: false });
+    setCantidad(String(c.cantidad));
+    setUbicacion(c.ubicacion ?? '');
+    setCorrigiendo({ id: c.id, previa: c.cantidad });
+    setQ('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function onDetectado(texto: string) {
@@ -121,24 +145,33 @@ export function CountPage() {
       toast('Cantidad inválida');
       return;
     }
+    const ubic = ubicacion.trim();
+    const ubicMatch = repo
+      .ubicaciones()
+      .find((u) => u.nombre.trim().toLowerCase() === ubic.toLowerCase());
     try {
       const r = registrarConteo({
         sesionId: id,
         loteId: objetivo.lote.id,
-        ubicacionId: ubicacionId || undefined,
+        ubicacion: ubic || undefined,
+        ubicacionId: ubicMatch?.id,
         usuarioId: usuario.id,
         rolConteo: viewer.rolConteo!,
         cantidad: n,
         ingresoManual: !objetivo.escaneado,
+        corrigeConteoId: corrigiendo?.id,
       });
       toast(
         r.duplicado
           ? 'Ese conteo ya estaba registrado'
-          : `Conteo guardado: ${n}` +
+          : corrigiendo
+            ? `Conteo corregido: ${corrigiendo.previa} → ${n}`
+            : `Conteo guardado: ${n}` +
               (r.alertas.length ? ' · generó alerta al auditor' : ''),
       );
       setObjetivo(null);
       setCantidad('');
+      setCorrigiendo(null);
     } catch (e) {
       toast('Error: ' + (e as Error).message);
     }
@@ -259,6 +292,13 @@ export function CountPage() {
 
       {objetivo?.tipo === 'lote' && (
         <div className="card">
+          {corrigiendo && (
+            <p className="badge warn" style={{ display: 'block' }}>
+              Corrigiendo un conteo anterior de {corrigiendo.previa}. Se guarda una
+              versión nueva y la anterior queda marcada como reemplazada
+              (trazabilidad).
+            </p>
+          )}
           <h2 style={{ marginTop: 0 }}>{producto?.nombre ?? objetivo.lote.codigoProducto}</h2>
           <p className="muted">
             <code className="inline">{objetivo.lote.codigoProducto}</code> · Lote{' '}
@@ -286,30 +326,35 @@ export function CountPage() {
                 onKeyDown={(e) => e.key === 'Enter' && guardar()}
               />
             </label>
-            {repo.ubicaciones().length > 0 && (
-              <label style={{ maxWidth: 240 }}>
-                Ubicación
-                <select
-                  value={ubicacionId}
-                  onChange={(e) => setUbicacionId(e.target.value)}
-                >
-                  <option value="">— sin especificar —</option>
-                  {repo.ubicaciones().map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label style={{ maxWidth: 240 }}>
+              Ubicación (opcional)
+              <input
+                type="text"
+                list="ubic-sugeridas"
+                placeholder="Ej. Cámara 1, Despacho…"
+                value={ubicacion}
+                onChange={(e) => setUbicacion(e.target.value)}
+              />
+              <datalist id="ubic-sugeridas">
+                {sugerencias.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </label>
             <button
               className="primary"
               onClick={guardar}
               style={{ alignSelf: 'flex-end' }}
             >
-              Guardar conteo
+              {corrigiendo ? 'Guardar corrección' : 'Guardar conteo'}
             </button>
-            <button onClick={() => setObjetivo(null)} style={{ alignSelf: 'flex-end' }}>
+            <button
+              onClick={() => {
+                setObjetivo(null);
+                setCorrigiendo(null);
+              }}
+              style={{ alignSelf: 'flex-end' }}
+            >
               Cancelar
             </button>
           </div>
@@ -327,12 +372,15 @@ export function CountPage() {
               <th>Producto</th>
               <th>Lote</th>
               <th>Cantidad</th>
+              <th>Ubicación</th>
               <th>Estado</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {misConteos.map((c) => {
               const lote = repo.lotesActivos().find((l) => l.id === c.loteId);
+              const vigente = vigentes.has(c.id);
               return (
                 <tr key={c.id}>
                   <td>{new Date(c.fechaSync ?? c.fechaRegistroLocal).toLocaleTimeString()}</td>
@@ -341,14 +389,23 @@ export function CountPage() {
                   <td>
                     {c.cantidad}
                     {c.ingresoManual && <span className="badge warn"> manual</span>}
+                    {c.corrigeConteoId && <span className="badge muted"> corrección</span>}
                   </td>
+                  <td>{c.ubicacion ?? '—'}</td>
                   <td>
-                    {!vigentes.has(c.id) ? (
+                    {!vigente ? (
                       <span className="badge muted">reemplazado</span>
                     ) : c.estadoSync === 'PENDIENTE' ? (
                       <span className="badge warn">pendiente de sincronizar</span>
                     ) : (
                       <span className="badge ok">sincronizado</span>
+                    )}
+                  </td>
+                  <td>
+                    {vigente && sesion.estado === 'ACTIVO' && lote && (
+                      <button className="sm" onClick={() => corregirConteo(c)}>
+                        Corregir
+                      </button>
                     )}
                   </td>
                 </tr>

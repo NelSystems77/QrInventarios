@@ -10,6 +10,45 @@ import {
 import { useRepo } from '../../data/useRepo';
 import { hayDatosDemo, sembrarDemo } from '../../data/seed';
 import { MUESTRAS, hayLotesDeMuestra, sembrarLotesDeMuestra } from '../../data/muestras';
+import type { RolConteo, SesionInventario } from '../../domain/types';
+
+function TablaSesiones({ lista }: { lista: SesionInventario[] }) {
+  const nav = useNavigate();
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Inicio</th>
+            <th>Estado</th>
+            <th>Umbral</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {lista.map((s) => (
+            <tr key={s.id}>
+              <td>{s.nombre}</td>
+              <td>{new Date(s.fechaInicio).toLocaleDateString()}</td>
+              <td>
+                <span className={'badge ' + (s.estado === 'ACTIVO' ? 'ok' : 'muted')}>
+                  {s.estado}
+                </span>
+              </td>
+              <td>{Math.round(s.umbralDiscrepancia * 100)}%</td>
+              <td>
+                <button className="sm" onClick={() => nav(`/sesiones/${s.id}`)}>
+                  Abrir
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function SessionsPage() {
   useRepo();
@@ -27,6 +66,19 @@ export function SessionsPage() {
     setNombre('');
     nav(`/sesiones/${s.id}`);
   }
+
+  // Sesiones donde el usuario tiene un rol de conteo asignado.
+  const misAsignaciones: { sesion: SesionInventario; rol: RolConteo }[] = usuario
+    ? repo
+        .miembrosDeUsuario(usuario.id)
+        .flatMap((m) => {
+          const s = repo.sesion(m.sesionId);
+          return s ? [{ sesion: s, rol: m.rol }] : [];
+        })
+        .sort((a, b) => b.sesion.fechaInicio.localeCompare(a.sesion.fechaInicio))
+    : [];
+  const idsAsignadas = new Set(misAsignaciones.map((x) => x.sesion.id));
+  const otrasSesiones = sesiones.filter((s) => !idsAsignadas.has(s.id));
 
   return (
     <>
@@ -108,43 +160,66 @@ export function SessionsPage() {
         </div>
       )}
 
-      {sesiones.length === 0 ? (
-        <p className="muted">No hay sesiones todavía.</p>
+      {esAdmin ? (
+        sesiones.length === 0 ? (
+          <p className="muted">No hay sesiones todavía.</p>
+        ) : (
+          <TablaSesiones lista={sesiones} />
+        )
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Inicio</th>
-                <th>Estado</th>
-                <th>Umbral</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {sesiones.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.nombre}</td>
-                  <td>{new Date(s.fechaInicio).toLocaleDateString()}</td>
-                  <td>
+        <>
+          <h2>Mis sesiones asignadas</h2>
+          {misAsignaciones.length === 0 ? (
+            <p className="badge warn" style={{ display: 'block' }}>
+              Aún no tienes una sesión asignada. Un administrador debe asignarte un
+              rol de conteo (CONTEO 1, CONTEO 2 o MUESTREO).
+            </p>
+          ) : (
+            <div className="row" style={{ flexWrap: 'wrap', gap: '.75rem' }}>
+              {misAsignaciones.map(({ sesion: s, rol }) => (
+                <div
+                  key={s.id}
+                  className="card"
+                  style={{ minWidth: 260, flex: '1 1 260px' }}
+                >
+                  <h3 style={{ margin: '0 0 .25rem' }}>{s.nombre}</h3>
+                  <p className="muted" style={{ margin: '0 0 .75rem' }}>
+                    <span className="badge ok">{rol.replace(/_/g, ' ')}</span>{' '}
                     <span
                       className={'badge ' + (s.estado === 'ACTIVO' ? 'ok' : 'muted')}
                     >
                       {s.estado}
                     </span>
-                  </td>
-                  <td>{Math.round(s.umbralDiscrepancia * 100)}%</td>
-                  <td>
+                  </p>
+                  <div className="row">
+                    {s.estado === 'ACTIVO' && (
+                      <button
+                        className="primary sm"
+                        onClick={() => nav(`/sesiones/${s.id}/contar`)}
+                      >
+                        Escanear y contar
+                      </button>
+                    )}
                     <button className="sm" onClick={() => nav(`/sesiones/${s.id}`)}>
-                      Abrir
+                      Ver sesión
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+
+          {otrasSesiones.length > 0 && (
+            <details style={{ marginTop: '1.5rem' }}>
+              <summary className="muted">
+                Otras sesiones ({otrasSesiones.length})
+              </summary>
+              <div style={{ marginTop: '.75rem' }}>
+                <TablaSesiones lista={otrasSesiones} />
+              </div>
+            </details>
+          )}
+        </>
       )}
     </>
   );

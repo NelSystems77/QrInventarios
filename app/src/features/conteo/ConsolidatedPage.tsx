@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { repo } from '../../data/repo';
@@ -6,6 +6,7 @@ import {
   consolidadoDeSesion,
   exportarConsolidadoCsv,
   exportarReconciliacionCsv,
+  idsVigentes,
   reconciliacionDeSesion,
   viewerDeSesion,
 } from '../../data/conteoService';
@@ -43,6 +44,7 @@ export function ConsolidatedPage() {
   );
   const [q, setQ] = useState('');
   const [vista, setVista] = useState<'lote' | 'reconciliacion'>('lote');
+  const [loteAbierto, setLoteAbierto] = useState<string | null>(null);
 
   const viewer = usuario ? viewerDeSesion(id, usuario.id) : null;
   const priv = viewer?.rolGlobal === 'ADMIN' || viewer?.rolGlobal === 'AUDITOR';
@@ -78,6 +80,19 @@ export function ConsolidatedPage() {
     }
     return f;
   }, [id, v, viewer, filtro, q]);
+
+  const vigentesIds = useMemo(() => (priv ? idsVigentes(id) : new Set<string>()), [id, v, priv]);
+
+  function historialDeLote(loteId: string) {
+    return repo
+      .conteosDeSesion(id)
+      .filter((c) => c.loteId === loteId)
+      .sort((a, b) =>
+        (b.fechaSync ?? b.fechaRegistroLocal).localeCompare(
+          a.fechaSync ?? a.fechaRegistroLocal,
+        ),
+      );
+  }
 
   if (!sesion || !viewer) return <p>Sesión no encontrada.</p>;
 
@@ -228,9 +243,15 @@ export function ConsolidatedPage() {
             </tr>
           </thead>
           <tbody>
-            {filas.slice(0, 500).map((f) => (
-              <tr key={f.loteId}>
-                <td>{f.codigo}</td>
+            {filas.slice(0, 500).map((f) => {
+              const abierto = priv && loteAbierto === f.loteId;
+              return (
+              <Fragment key={f.loteId}>
+              <tr
+                onClick={priv ? () => setLoteAbierto(abierto ? null : f.loteId) : undefined}
+                style={priv ? { cursor: 'pointer' } : undefined}
+              >
+                <td>{priv && (abierto ? '▾ ' : '▸ ')}{f.codigo}</td>
                 <td>{f.nombre}</td>
                 <td>{f.lote}</td>
                 <td>{f.fechaVencimiento ?? '—'}</td>
@@ -250,7 +271,75 @@ export function ConsolidatedPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              {abierto && (() => {
+                const hist = historialDeLote(f.loteId);
+                return (
+                <tr>
+                  <td colSpan={9} style={{ background: 'var(--bg-alt, #f6f6f6)' }}>
+                    <strong>Historial de conteos del lote</strong>
+                    {hist.length === 0 ? (
+                      <p className="muted" style={{ margin: '.5rem 0 0' }}>
+                        Sin conteos registrados.
+                      </p>
+                    ) : (
+                    <table style={{ marginTop: '.5rem' }}>
+                      <thead>
+                        <tr>
+                          <th>Hora</th>
+                          <th>Rol</th>
+                          <th>Contador</th>
+                          <th>Cantidad</th>
+                          <th>Ubicación</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {hist.map((c) => {
+                          const prev = c.corrigeConteoId
+                            ? hist.find((x) => x.id === c.corrigeConteoId)
+                            : undefined;
+                          return (
+                            <tr key={c.id}>
+                              <td>
+                                {new Date(
+                                  c.fechaSync ?? c.fechaRegistroLocal,
+                                ).toLocaleString()}
+                              </td>
+                              <td>{c.rolConteo.replace(/_/g, ' ')}</td>
+                              <td>{repo.usuario(c.usuarioId)?.nombre ?? c.usuarioId.slice(0, 8)}</td>
+                              <td>
+                                {c.cantidad}
+                                {c.ingresoManual && <span className="badge warn"> manual</span>}
+                              </td>
+                              <td>{c.ubicacion ?? '—'}</td>
+                              <td>
+                                {vigentesIds.has(c.id) ? (
+                                  <span className="badge ok">vigente</span>
+                                ) : (
+                                  <span className="badge muted">reemplazado</span>
+                                )}
+                                {prev && (
+                                  <span className="badge muted">
+                                    {' '}corrige {prev.cantidad} de{' '}
+                                    {new Date(
+                                      prev.fechaSync ?? prev.fechaRegistroLocal,
+                                    ).toLocaleTimeString()}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    )}
+                  </td>
+                </tr>
+                );
+              })()}
+              </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -100,6 +100,22 @@ export function crearUbicacion(nombre: string): Ubicacion {
   return u;
 }
 
+/**
+ * Sugerencias de ubicación para el campo del conteo: las ubicaciones que un Admin
+ * predefinió más las que ya se han escrito en conteos de esta sesión. Sirve para
+ * alimentar un <datalist>; el contador también puede escribir una nueva.
+ */
+export function ubicacionesSugeridas(sesionId: string): string[] {
+  const set = new Set<string>();
+  for (const u of repo.ubicaciones()) {
+    if (u.nombre.trim()) set.add(u.nombre.trim());
+  }
+  for (const c of repo.conteosDeSesion(sesionId)) {
+    if (c.ubicacion?.trim()) set.add(c.ubicacion.trim());
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'es'));
+}
+
 export function viewerDeSesion(sesionId: string, usuarioId: string): Viewer {
   const usuario = repo.usuario(usuarioId);
   const miembro = repo.miembro(sesionId, usuarioId);
@@ -116,10 +132,14 @@ export interface EntradaConteo {
   sesionId: string;
   loteId: string;
   ubicacionId?: string;
+  /** Ubicación física escrita/elegida por el contador (Ej: 'Cámara 1'). Opcional. */
+  ubicacion?: string;
   usuarioId: string;
   rolConteo: RolConteo;
   cantidad: number;
   ingresoManual?: boolean;
+  /** Id del conteo que esta versión corrige (trazabilidad de la corrección). */
+  corrigeConteoId?: string;
   clienteUuid?: string;
   fechaRegistroLocal?: string;
 }
@@ -151,16 +171,20 @@ export function registrarConteo(entrada: EntradaConteo): ResultadoConteo {
   if (!sesion) throw new Error('Sesión no encontrada');
   if (sesion.estado === 'CERRADO') throw new Error('La sesión está cerrada');
 
+  const ubicacion = entrada.ubicacion?.trim() || undefined;
+
   const nuevo: Conteo = {
     id: uuid(),
     sesionId: entrada.sesionId,
     loteId: entrada.loteId,
     ubicacionId: entrada.ubicacionId,
+    ubicacion,
     usuarioId: entrada.usuarioId,
     rolConteo: entrada.rolConteo,
     cantidad: Math.trunc(entrada.cantidad),
     ingresoManual: entrada.ingresoManual ?? false,
     esVigente: true,
+    corrigeConteoId: entrada.corrigeConteoId,
     clienteUuid,
     fechaRegistroLocal: entrada.fechaRegistroLocal ?? ahora(),
     fechaSync: undefined,

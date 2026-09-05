@@ -4,6 +4,8 @@ import { ToastHost } from './components/toast';
 import { UserSwitcher } from './components/UserSwitcher';
 import { SyncStatus } from './components/SyncStatus';
 import { useSesion, useUsuarioActual } from './auth/firebaseAuth';
+import { repo } from './data/repo';
+import { useRepo } from './data/useRepo';
 import { LoginPage } from './features/auth/LoginPage';
 import { SessionsPage } from './features/conteo/SessionsPage';
 import { SessionPage } from './features/conteo/SessionPage';
@@ -47,22 +49,22 @@ function Sidebar({ admin }: { admin: boolean }) {
         Sesiones de inventario
       </NavLink>
 
-      <div className="nav-section">Etiquetado</div>
-      <NavLink to="/importar" className="nav-link">
-        Importar PDF
-      </NavLink>
-      <NavLink to="/catalogo" className="nav-link">
-        Catálogo y exclusiones
-      </NavLink>
-      <NavLink to="/generar" className="nav-link">
-        Generar etiquetas
-      </NavLink>
-      <NavLink to="/reimprimir" className="nav-link">
-        Reimprimir
-      </NavLink>
-
       {admin && (
         <>
+          <div className="nav-section">Etiquetado</div>
+          <NavLink to="/importar" className="nav-link">
+            Importar PDF
+          </NavLink>
+          <NavLink to="/catalogo" className="nav-link">
+            Catálogo y exclusiones
+          </NavLink>
+          <NavLink to="/generar" className="nav-link">
+            Generar etiquetas
+          </NavLink>
+          <NavLink to="/reimprimir" className="nav-link">
+            Reimprimir
+          </NavLink>
+
           <div className="nav-section">Administración</div>
           <NavLink to="/usuarios" className="nav-link">
             Usuarios
@@ -81,6 +83,7 @@ function Sidebar({ admin }: { admin: boolean }) {
 export default function App() {
   const sesion = useSesion();
   const usuario = useUsuarioActual();
+  useRepo();
 
   if (sesion.estado === 'cargando') {
     return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
@@ -96,6 +99,19 @@ export default function App() {
 
   const admin = usuario?.rolGlobal === 'ADMIN';
 
+  // Un contador con exactamente una sesión activa asignada entra directo a contar.
+  const sesionesAsignadasActivas =
+    usuario && !admin
+      ? repo
+          .miembrosDeUsuario(usuario.id)
+          .map((m) => repo.sesion(m.sesionId))
+          .filter((s): s is NonNullable<typeof s> => s?.estado === 'ACTIVO')
+      : [];
+  const inicio =
+    sesionesAsignadasActivas.length === 1
+      ? `/sesiones/${sesionesAsignadasActivas[0].id}/contar`
+      : '/sesiones';
+
   return (
     <div className="app">
       <Sidebar admin={admin} />
@@ -108,17 +124,22 @@ export default function App() {
         )}
         <Suspense fallback={<p className="muted">Cargando…</p>}>
           <Routes>
-            <Route path="/" element={<Navigate to="/sesiones" replace />} />
+            <Route path="/" element={<Navigate to={inicio} replace />} />
             <Route path="/sesiones" element={<SessionsPage />} />
             <Route path="/sesiones/:id" element={<SessionPage />} />
             <Route path="/sesiones/:id/contar" element={<CountPage />} />
             <Route path="/sesiones/:id/consolidado" element={<ConsolidatedPage />} />
-            <Route path="/importar" element={<ImportPage />} />
-            <Route path="/importar/:id" element={<PreviewPage />} />
-            <Route path="/catalogo" element={<CatalogPage />} />
-            <Route path="/generar" element={<GeneratePage />} />
-            <Route path="/reimprimir" element={<ReprintPage />} />
-            {admin && <Route path="/usuarios" element={<UsersPage />} />}
+            {admin && (
+              <>
+                <Route path="/importar" element={<ImportPage />} />
+                <Route path="/importar/:id" element={<PreviewPage />} />
+                <Route path="/catalogo" element={<CatalogPage />} />
+                <Route path="/generar" element={<GeneratePage />} />
+                <Route path="/reimprimir" element={<ReprintPage />} />
+                <Route path="/usuarios" element={<UsersPage />} />
+              </>
+            )}
+            <Route path="*" element={<Navigate to={inicio} replace />} />
           </Routes>
         </Suspense>
       </main>

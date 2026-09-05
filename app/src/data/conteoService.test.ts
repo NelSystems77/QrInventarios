@@ -99,6 +99,42 @@ describe('registrarConteo — versiones en conflicto (spec 6.2/6.3)', () => {
   });
 });
 
+describe('corrección de un conteo (trazabilidad)', () => {
+  it('corregir la cantidad crea un documento nuevo y deja el anterior como reemplazado', () => {
+    const s = crearSesion('S');
+    const l = seedProductoLote('1-00-00-0010');
+    const a = registrarConteo({
+      sesionId: s.id, loteId: l.id, usuarioId: op1.id, rolConteo: 'CONTEO_1',
+      cantidad: 10, ubicacion: 'Cámara 1',
+      fechaRegistroLocal: '2026-09-02T09:00:00Z',
+    });
+    const b = registrarConteo({
+      sesionId: s.id, loteId: l.id, usuarioId: op1.id, rolConteo: 'CONTEO_1',
+      cantidad: 7, corrigeConteoId: a.conteo.id,
+      fechaRegistroLocal: '2026-09-02T09:05:00Z',
+    });
+
+    const todos = repo.conteosDeSesion(s.id);
+    expect(todos).toHaveLength(2); // append-only: la versión anterior se conserva
+    expect(b.conteo.corrigeConteoId).toBe(a.conteo.id);
+
+    const vigentes = seleccionarVigentes(todos);
+    expect(vigentes).toHaveLength(1);
+    expect(vigentes[0].id).toBe(b.conteo.id);
+    expect(vigentes[0].cantidad).toBe(7);
+  });
+
+  it('guarda la ubicación escrita por el contador', () => {
+    const s = crearSesion('S');
+    const l = seedProductoLote('1-00-00-0011');
+    const r = registrarConteo({
+      sesionId: s.id, loteId: l.id, usuarioId: op1.id, rolConteo: 'CONTEO_1',
+      cantidad: 5, ubicacion: '  Despacho  ',
+    });
+    expect(r.conteo.ubicacion).toBe('Despacho');
+  });
+});
+
 describe('triangulación y consolidado (spec 2.4 / 3)', () => {
   it('C1 ≠ C2 sin muestreo => alerta + estado DISCREPANCIA + sin stock oficial', () => {
     const s = crearSesion('S');

@@ -92,11 +92,13 @@ CREATE TABLE conteos_inventario (
     sesion_id           UUID NOT NULL REFERENCES sesiones_inventario(id),
     lote_id             UUID NOT NULL REFERENCES lotes(id),
     ubicacion_id        UUID REFERENCES ubicaciones(id),
+    ubicacion           VARCHAR(100), -- etiqueta libre escrita por el contador (Ej: 'Cámara 1', 'Despacho')
     usuario_id          UUID NOT NULL,
     rol_conteo          VARCHAR(20) NOT NULL CHECK (rol_conteo IN ('CONTEO_1','CONTEO_2','MUESTREO')),
     cantidad            INT NOT NULL CHECK (cantidad >= 0),
     ingreso_manual      BOOLEAN NOT NULL DEFAULT FALSE,
     es_vigente          BOOLEAN NOT NULL DEFAULT TRUE, -- FALSE = corregido/reemplazado
+    corrige_conteo_id   UUID REFERENCES conteos_inventario(id), -- si esta versión corrige a otra (trazabilidad)
     cliente_uuid        UUID NOT NULL, -- generado en el dispositivo, para dedupe offline
     fecha_registro_local TIMESTAMP NOT NULL, -- hora del dispositivo al capturar
     fecha_sync          TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- hora del servidor al recibir

@@ -237,6 +237,9 @@ export const repo = {
       (m) => m.sesionId === sesionId && m.usuarioId === usuarioId,
     );
   },
+  miembrosDeUsuario(usuarioId: string): MiembroSesion[] {
+    return Object.values(db.miembros).filter((m) => m.usuarioId === usuarioId);
+  },
 
   // ---- Conteos ----
   conteoPorClienteUuid(clienteUuid: string): Conteo | undefined {
