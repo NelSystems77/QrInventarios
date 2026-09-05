@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { toast } from '../../components/toast';
+import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { repo } from '../../data/repo';
 import { descargarPdf, reimprimirLote } from '../../data/service';
 import { useRepo } from '../../data/useRepo';
@@ -14,6 +15,7 @@ const MOTIVOS: { valor: MotivoImpresion; etiqueta: string }[] = [
 
 export function ReprintPage() {
   const v = useRepo();
+  const usuario = useUsuarioActual();
   const [q, setQ] = useState('');
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [motivo, setMotivo] = useState<MotivoImpresion>('DANADA');
@@ -41,10 +43,10 @@ export function ReprintPage() {
   const historial = etiquetaSel ? repo.historialDeEtiqueta(etiquetaSel.id) : [];
 
   async function reimprimir() {
-    if (!seleccion) return;
+    if (!seleccion || !usuario) return;
     setImprimiendo(true);
     try {
-      const pdf = await reimprimirLote(seleccion, motivo);
+      const pdf = await reimprimirLote(seleccion, motivo, usuario.id);
       descargarPdf(pdf, `etiqueta-${loteSel?.codigoProducto}.pdf`);
       toast('Etiqueta reimpresa. Motivo e historial registrados.');
     } catch (e) {
@@ -168,7 +170,7 @@ export function ReprintPage() {
                   <tr key={h.id}>
                     <td>{new Date(h.fecha).toLocaleString()}</td>
                     <td>{h.motivo.replace('_', ' ')}</td>
-                    <td>{h.usuarioId}</td>
+                    <td>{repo.usuario(h.usuarioId)?.nombre ?? h.usuarioId}</td>
                   </tr>
                 ))}
               </tbody>

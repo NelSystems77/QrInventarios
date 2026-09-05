@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from '../../components/toast';
 import { repo } from '../../data/repo';
 import {
   confirmarImportacion,
   descartarImportacion,
 } from '../../data/service';
+import { vincularImportacion } from '../../data/conteoService';
 import { useRepo } from '../../data/useRepo';
 import { useImportacionActiva } from '../../data/useAmbito';
 import type { ImportacionFila } from '../../domain/types';
@@ -15,6 +16,8 @@ const LIMITE_RENDER = 250;
 export function PreviewPage() {
   const { id = '' } = useParams();
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const sesionId = params.get('sesion') || '';
   const v = useRepo();
   useImportacionActiva(id);
   const imp = repo.importacion(id);
@@ -66,21 +69,31 @@ export function PreviewPage() {
     toast(
       `Importación confirmada · ${r.productosCreados} productos y ${r.lotesCreados} lotes nuevos`,
     );
-    nav('/generar');
+    if (sesionId && repo.sesion(sesionId)) {
+      vincularImportacion(sesionId, id);
+      nav(`/sesiones/${sesionId}`);
+    } else {
+      nav('/generar');
+    }
   }
 
   function descartar() {
     if (!confirm('¿Descartar esta importación? No se tocará el catálogo.')) return;
     descartarImportacion(id);
     toast('Importación descartada');
-    nav('/importar');
+    nav(sesionId && repo.sesion(sesionId) ? `/sesiones/${sesionId}` : '/importar');
   }
 
   return (
     <>
       <div className="row between">
         <h1>Previsualización: {imp.nombreArchivo}</h1>
-        <button className="ghost" onClick={() => nav('/importar')}>
+        <button
+          className="ghost"
+          onClick={() =>
+            nav(sesionId && repo.sesion(sesionId) ? `/sesiones/${sesionId}` : '/importar')
+          }
+        >
           ← Volver
         </button>
       </div>

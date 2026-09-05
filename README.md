@@ -52,6 +52,7 @@ desde la misma pantalla con rol `OPERADOR`; el super admin los promueve.
 | 7.1.5 / 7.5 | Reimpresión individual con motivo e historial | ✅ `features/labels/ReprintPage` |
 | 2.x | Catálogo `productos` / `lotes` (N lotes por producto) | ✅ `domain/types.ts` + `data/repo.ts` |
 | 2.2 | Sesiones, ubicaciones, captura de conteos con corrección | ✅ `features/conteo` |
+| 2.2 | Flujo real completo desde la sesión: importar PDF → generar QR → equipo → contar, sin datos demo. Sesión ligada a una importación (`SesionInventario.importacionId` / `Lote.importacionId`); progreso/consolidado/escaneo acotados a esos lotes | ✅ `SessionPage` «Preparación», `conteoService.lotesDeSesion` |
 | 2.2 | Corregir un conteo equivocado desde la UI (documento nuevo `corrigeConteoId`, versión anterior queda "reemplazada"); historial por lote para Admin/Auditor en el consolidado | ✅ `features/conteo/CountPage` + `ConsolidatedPage` |
 | 2.2 | Ubicación del conteo escrita/elegida por el contador (campo opcional siempre visible + sugerencias del Admin y de conteos previos) | ✅ `Conteo.ubicacion`, `ubicacionesSugeridas()` |
 | — | Vista por perfil: OPERADOR/AUDITOR ven solo "Conteo" (menú Etiquetado y Usuarios solo Admin); "Mis sesiones asignadas" con acceso directo a contar; aviso claro si no hay rol asignado | ✅ `App.tsx`, `SessionsPage`, `SessionPage` |
@@ -89,7 +90,10 @@ toggle **simular offline** para probar la §6.4.
 
 ## Flujo de conteo
 
-1. **Admin** crea una sesión y asigna roles (`CONTEO_1`, `CONTEO_2`, `MUESTREO`) al equipo.
+1. **Admin** crea una sesión, la liga a una **importación de PDF** (que define su lista de
+   productos) y genera la hoja de QR — todo desde la tarjeta «Preparación de la sesión».
+   Luego asigna roles (`CONTEO_1`, `CONTEO_2`, `MUESTREO`) al equipo. Una sesión sin
+   importación cuenta contra todo el catálogo (sesiones demo / antiguas).
 2. Cada **contador** entra a *Escanear y contar*: escanea el QR (o busca manual) → ve
    el detalle → registra la cantidad. Cada conteo lleva `cliente_uuid` + hora local.
 3. Si llegan dos versiones para el mismo lote/rol, se conservan ambas y vale la más

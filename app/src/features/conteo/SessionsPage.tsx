@@ -23,27 +23,40 @@ function TablaSesiones({ lista }: { lista: SesionInventario[] }) {
             <th>Inicio</th>
             <th>Estado</th>
             <th>Umbral</th>
+            <th>Productos</th>
             <th />
           </tr>
         </thead>
         <tbody>
-          {lista.map((s) => (
-            <tr key={s.id}>
-              <td>{s.nombre}</td>
-              <td>{new Date(s.fechaInicio).toLocaleDateString()}</td>
-              <td>
-                <span className={'badge ' + (s.estado === 'ACTIVO' ? 'ok' : 'muted')}>
-                  {s.estado}
-                </span>
-              </td>
-              <td>{Math.round(s.umbralDiscrepancia * 100)}%</td>
-              <td>
-                <button className="sm" onClick={() => nav(`/sesiones/${s.id}`)}>
-                  Abrir
-                </button>
-              </td>
-            </tr>
-          ))}
+          {lista.map((s) => {
+            const imp = s.importacionId ? repo.importacion(s.importacionId) : undefined;
+            return (
+              <tr key={s.id}>
+                <td>{s.nombre}</td>
+                <td>{new Date(s.fechaInicio).toLocaleDateString()}</td>
+                <td>
+                  <span className={'badge ' + (s.estado === 'ACTIVO' ? 'ok' : 'muted')}>
+                    {s.estado}
+                  </span>
+                </td>
+                <td>{Math.round(s.umbralDiscrepancia * 100)}%</td>
+                <td>
+                  {imp ? (
+                    imp.nombreArchivo
+                  ) : s.importacionId ? (
+                    <span className="muted">importación pendiente</span>
+                  ) : (
+                    <span className="muted">sin definir</span>
+                  )}
+                </td>
+                <td>
+                  <button className="sm" onClick={() => nav(`/sesiones/${s.id}`)}>
+                    Abrir
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -56,14 +69,23 @@ export function SessionsPage() {
   const usuario = useUsuarioActual();
   const [nombre, setNombre] = useState('');
   const [umbral, setUmbral] = useState(UMBRAL_DISCREPANCIA_DEFAULT * 100);
+  const [importacionId, setImportacionId] = useState('');
   const sesiones = repo.sesiones();
   const esAdmin = usuario?.rolGlobal === 'ADMIN';
+  const importacionesConfirmadas = repo
+    .importaciones()
+    .filter((i) => i.estado === 'CONFIRMADA');
 
   function crear() {
     if (!nombre.trim()) return;
-    const s = crearSesion(nombre.trim(), Math.max(1, umbral) / 100);
+    const s = crearSesion(
+      nombre.trim(),
+      Math.max(1, umbral) / 100,
+      importacionId || undefined,
+    );
     toast('Sesión creada');
     setNombre('');
+    setImportacionId('');
     nav(`/sesiones/${s.id}`);
   }
 
@@ -108,6 +130,22 @@ export function SessionsPage() {
                 onChange={(e) => setUmbral(Number(e.target.value) || 0)}
               />
             </label>
+            {importacionesConfirmadas.length > 0 && (
+              <label style={{ maxWidth: 280 }}>
+                Productos (importación)
+                <select
+                  value={importacionId}
+                  onChange={(e) => setImportacionId(e.target.value)}
+                >
+                  <option value="">— definir dentro de la sesión —</option>
+                  {importacionesConfirmadas.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.nombreArchivo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               className="primary"
               onClick={crear}
@@ -116,6 +154,10 @@ export function SessionsPage() {
               Crear
             </button>
           </div>
+          <p className="muted" style={{ fontSize: '.82rem', margin: '.5rem 0 0' }}>
+            La lista de productos de la sesión se toma de una importación de PDF.
+            Puedes elegirla aquí o importarla desde la propia sesión.
+          </p>
           <div className="row" style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
             <span className="muted" style={{ fontSize: '.82rem' }}>Demo:</span>
             <button

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from '../../components/toast';
+import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { repo } from '../../data/repo';
 import {
   descargarPdf,
@@ -10,13 +11,15 @@ import { useRepo } from '../../data/useRepo';
 
 export function GeneratePage() {
   useRepo();
+  const usuario = useUsuarioActual();
   const [generando, setGenerando] = useState(false);
   const pendientes = lotesPendientesDeImpresion();
 
   async function generar() {
+    if (!usuario) return;
     setGenerando(true);
     try {
-      const { pdf, cantidad } = await generarPendientes();
+      const { pdf, cantidad } = await generarPendientes(usuario.id);
       if (cantidad === 0) {
         toast('No hay etiquetas pendientes.');
         return;

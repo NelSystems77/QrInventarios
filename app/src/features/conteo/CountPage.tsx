@@ -6,6 +6,7 @@ import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { ahora, repo, uuid } from '../../data/repo';
 import {
   idsVigentes,
+  lotesDeSesion,
   registrarConteo,
   ubicacionesSugeridas,
   viewerDeSesion,
@@ -16,7 +17,7 @@ import { parsePayload } from '../../lib/qr/payload';
 import type { Conteo, Lote } from '../../domain/types';
 
 type Objetivo =
-  | { tipo: 'lote'; lote: Lote; escaneado: boolean }
+  | { tipo: 'lote'; lote: Lote; escaneado: boolean; fueraDeAlcance?: boolean }
   | { tipo: 'desconocido'; payloadCrudo: string };
 
 export function CountPage() {
@@ -41,11 +42,17 @@ export function CountPage() {
 
   const viewer = usuario ? viewerDeSesion(id, usuario.id) : null;
 
+  // Lotes que conforman esta sesión (los de su importación + los registrados al
+  // vuelo). La búsqueda y el escaneo se resuelven contra este conjunto.
+  const lotesSesion = useMemo(
+    () => lotesDeSesion(id, { incluirContados: true }),
+    [id, v],
+  );
+
   const resultados = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return [];
-    return repo
-      .lotesActivos()
+    return lotesSesion
       .map((l) => ({ lote: l, producto: repo.producto(l.codigoProducto) }))
       .filter(
         ({ lote, producto }) =>
@@ -54,7 +61,7 @@ export function CountPage() {
           lote.lote.toLowerCase().includes(t),
       )
       .slice(0, 15);
-  }, [q, v]);
+  }, [q, lotesSesion]);
 
   const misConteos = useMemo(() => {
     if (!viewer) return [];
@@ -82,8 +89,8 @@ export function CountPage() {
   if (sesion.estado === 'CERRADO')
     return <p className="badge muted" style={{ display: 'block' }}>La sesión está cerrada.</p>;
 
-  function elegirLote(lote: Lote, escaneado: boolean) {
-    setObjetivo({ tipo: 'lote', lote, escaneado });
+  function elegirLote(lote: Lote, escaneado: boolean, fueraDeAlcance = false) {
+    setObjetivo({ tipo: 'lote', lote, escaneado, fueraDeAlcance });
     setCantidad('');
     setCorrigiendo(null);
     setQ('');
@@ -106,9 +113,16 @@ export function CountPage() {
   function onDetectado(texto: string) {
     const payload = parsePayload(texto);
     if (payload) {
-      const lote = repo.lotesActivos().find((l) => l.id === payload.lid);
-      if (lote) {
-        elegirLote(lote, true);
+      const enSesion = lotesSesion.find((l) => l.id === payload.lid);
+      if (enSesion) {
+        elegirLote(enSesion, true);
+        return;
+      }
+      // Lote conocido en el catálogo pero fuera de la lista de la sesión: no se
+      // bloquea al operador (append-only); se avisa y se incluye igual.
+      const global = repo.lote(payload.lid);
+      if (global) {
+        elegirLote(global, true, true);
         return;
       }
     }
@@ -132,6 +146,7 @@ export function CountPage() {
       requiereQr: true,
       activo: true,
       createdAt: ahora(),
+      ...(sesion?.importacionId ? { importacionId: sesion.importacionId } : {}),
     };
     repo.upsertLote(lote);
     toast('Producto y lote registrados');
@@ -297,6 +312,13 @@ export function CountPage() {
               Corrigiendo un conteo anterior de {corrigiendo.previa}. Se guarda una
               versión nueva y la anterior queda marcada como reemplazada
               (trazabilidad).
+            </p>
+          )}
+          {objetivo.fueraDeAlcance && (
+            <p className="badge warn" style={{ display: 'block' }}>
+              Este código no estaba en la lista de productos de la sesión. Se
+              registrará igual y quedará visible en el consolidado para que el
+              administrador lo revise.
             </p>
           )}
           <h2 style={{ marginTop: 0 }}>{producto?.nombre ?? objetivo.lote.codigoProducto}</h2>

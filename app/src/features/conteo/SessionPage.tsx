@@ -10,6 +10,7 @@ import {
   crearUbicacion,
   eliminarSesion,
   guardarStockSifa,
+  lotesDeSesion,
   progresoSesion,
   purgarMiembrosHuerfanos,
   viewerDeSesion,
@@ -17,7 +18,20 @@ import {
 import { parsePharmacyPdf } from '../../lib/pdf/parsePharmacyPdf';
 import { useRepo } from '../../data/useRepo';
 import { useSesionActiva } from '../../data/useAmbito';
-import type { RolConteo } from '../../domain/types';
+import type { Lote, RolConteo } from '../../domain/types';
+
+/**
+ * Lotes con QR que aún no tienen etiqueta impresa. Inline aquí (en vez de importar
+ * `lotesPendientesDeImpresion` de `data/service`) para no arrastrar pdf-lib/qrcode
+ * al bundle inicial: `SessionPage` no es lazy.
+ */
+function lotesSinEtiqueta(lotes: Lote[]): Lote[] {
+  return lotes.filter((l) => {
+    if (!l.activo || !l.requiereQr) return false;
+    const et = repo.etiquetaDeLote(l.id);
+    return !et || et.vecesImpreso === 0;
+  });
+}
 
 const ROLES: RolConteo[] = ['CONTEO_1', 'CONTEO_2', 'MUESTREO'];
 
@@ -30,6 +44,61 @@ export function SessionPage() {
   const sesion = repo.sesion(id);
   const [nuevaUbic, setNuevaUbic] = useState('');
   const [cargandoSifa, setCargandoSifa] = useState(false);
+  const [cargandoPdf, setCargandoPdf] = useState(false);
+  const [generandoQr, setGenerandoQr] = useState(false);
+
+  async function importarPdfProductos(file: File) {
+    if (
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
+    ) {
+      toast('El archivo debe ser un PDF.');
+      return;
+    }
+    setCargandoPdf(true);
+    try {
+      const extraccion = await parsePharmacyPdf(await file.arrayBuffer());
+      if (extraccion.filas.length === 0) {
+        toast('No se detectaron filas de producto en el PDF.');
+        return;
+      }
+      const { crearImportacionDesdeExtraccion } = await import('../../data/service');
+      const imp = crearImportacionDesdeExtraccion(file.name, extraccion);
+      toast(`${extraccion.filas.length} filas extraídas · revísalas y confirma`);
+      nav(`/importar/${imp.id}?sesion=${id}`);
+    } catch (e) {
+      console.error(e);
+      toast('No se pudo leer el PDF: ' + (e as Error).message);
+    } finally {
+      setCargandoPdf(false);
+    }
+  }
+
+  async function generarQrDeSesion() {
+    if (!usuario) return;
+    setGenerandoQr(true);
+    try {
+      const { generarPendientes, descargarPdf } = await import('../../data/service');
+      const { pdf, cantidad } = await generarPendientes(
+        usuario.id,
+        lotesDeSesion(id),
+      );
+      if (cantidad === 0) {
+        toast('No hay etiquetas pendientes en esta sesión.');
+        return;
+      }
+      descargarPdf(
+        pdf,
+        `etiquetas-${(repo.sesion(id)?.nombre ?? 'sesion').replace(/\s+/g, '_')}.pdf`,
+      );
+      toast(`${cantidad} etiquetas generadas y marcadas como impresas.`);
+    } catch (e) {
+      console.error(e);
+      toast('Error al generar: ' + (e as Error).message);
+    } finally {
+      setGenerandoQr(false);
+    }
+  }
 
   async function cargarSifa(file: File) {
     if (
@@ -157,6 +226,111 @@ export function SessionPage() {
           </button>
         )}
       </div>
+
+      {viewer.rolGlobal === 'ADMIN' && sesion.estado === 'ACTIVO' && (() => {
+        const imp = sesion.importacionId
+          ? repo.importacion(sesion.importacionId)
+          : undefined;
+        const lotesSes = lotesDeSesion(id);
+        const conQr = lotesSes.filter((l) => l.requiereQr);
+        const pendientesEtq = lotesSinEtiqueta(lotesSes);
+        const nMiembros = miembros.length;
+        const paso = (ok: boolean) => (
+          <span className={'badge ' + (ok ? 'ok' : 'warn')}>{ok ? '✓' : '•'}</span>
+        );
+        return (
+          <>
+            <h2>Preparación de la sesión</h2>
+            <div className="card">
+              <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.9 }}>
+                <li>
+                  {paso(!!imp)} <strong>Productos.</strong>{' '}
+                  {imp ? (
+                    <>
+                      {imp.nombreArchivo} · {lotesSes.length} lotes ({conQr.length} con
+                      QR).{' '}
+                      <button className="sm" onClick={() => nav('/catalogo')}>
+                        Ajustar exclusiones
+                      </button>
+                    </>
+                  ) : sesion.importacionId ? (
+                    <span className="muted">
+                      Importación vinculada pero aún sin confirmar.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="muted">
+                        Importa el PDF de productos de esta bodega.{' '}
+                      </span>
+                      <button
+                        className="primary sm"
+                        type="button"
+                        disabled={cargandoPdf}
+                        onClick={(e) =>
+                          (
+                            e.currentTarget.nextElementSibling as HTMLInputElement
+                          )?.click()
+                        }
+                      >
+                        {cargandoPdf ? 'Procesando…' : 'Importar PDF de productos'}
+                      </button>
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) importarPdfProductos(f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </>
+                  )}
+                </li>
+                <li>
+                  {paso(imp ? pendientesEtq.length === 0 : false)}{' '}
+                  <strong>Etiquetas QR.</strong>{' '}
+                  {!imp ? (
+                    <span className="muted">Primero define los productos.</span>
+                  ) : pendientesEtq.length === 0 ? (
+                    <span className="muted">
+                      Todas las etiquetas con QR ya están generadas.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="muted">
+                        {pendientesEtq.length} lotes sin etiqueta impresa.{' '}
+                      </span>
+                      <button
+                        className="primary sm"
+                        onClick={generarQrDeSesion}
+                        disabled={generandoQr}
+                      >
+                        {generandoQr ? 'Generando…' : 'Generar hoja de QR'}
+                      </button>
+                    </>
+                  )}
+                </li>
+                <li>
+                  {paso(nMiembros > 0)} <strong>Equipo.</strong>{' '}
+                  <span className="muted">
+                    {nMiembros === 0
+                      ? 'Asigna CONTEO 1 / CONTEO 2 / MUESTREO en «Equipo de la sesión».'
+                      : `${nMiembros} persona(s) asignada(s).`}
+                  </span>
+                </li>
+                <li>
+                  {paso(repo.stockSifaDeSesion(id).length > 0)}{' '}
+                  <strong>Stock SIFA (opcional).</strong>{' '}
+                  <span className="muted">
+                    Carga el reporte RptSIFA032 para reconciliar en el consolidado.
+                  </span>
+                </li>
+              </ol>
+            </div>
+          </>
+        );
+      })()}
 
       {!sinRol && (
         <>

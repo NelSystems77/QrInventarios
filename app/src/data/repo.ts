@@ -149,6 +149,15 @@ export const repo = {
   lotesActivos(): Lote[] {
     return Object.values(db.lotes).filter((l) => l.activo);
   },
+  lote(id: string): Lote | undefined {
+    return db.lotes[id];
+  },
+  /** Lotes activos creados (o tocados por última vez) por una importación. */
+  lotesDeImportacion(importacionId: string): Lote[] {
+    return Object.values(db.lotes).filter(
+      (l) => l.activo && l.importacionId === importacionId,
+    );
+  },
   producto(codigo: string): Producto | undefined {
     return db.productos[codigo];
   },

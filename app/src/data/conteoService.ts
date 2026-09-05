@@ -5,6 +5,7 @@ import type {
   Conteo,
   FilaConsolidado,
   FilaReconciliacion,
+  Lote,
   MiembroSesion,
   RolConteo,
   RolGlobal,
@@ -39,6 +40,7 @@ const esPrivilegiado = (v: Viewer) =>
 export function crearSesion(
   nombre: string,
   umbral = UMBRAL_DISCREPANCIA_DEFAULT,
+  importacionId?: string,
 ): SesionInventario {
   const s: SesionInventario = {
     id: uuid(),
@@ -46,6 +48,7 @@ export function crearSesion(
     estado: 'ACTIVO',
     fechaInicio: ahora(),
     umbralDiscrepancia: umbral,
+    ...(importacionId ? { importacionId } : {}),
   };
   repo.upsertSesion(s);
   return s;
@@ -54,6 +57,46 @@ export function crearSesion(
 export function cerrarSesion(sesionId: string) {
   const s = repo.sesion(sesionId);
   if (s) repo.upsertSesion({ ...s, estado: 'CERRADO' });
+}
+
+/**
+ * Liga una sesión a la importación de PDF que define su lista de productos. Se
+ * usa cuando la importación se confirma después de haber creado la sesión (flujo
+ * de "Preparación" en la página de la sesión).
+ */
+export function vincularImportacion(sesionId: string, importacionId: string) {
+  const s = repo.sesion(sesionId);
+  if (s) repo.upsertSesion({ ...s, importacionId });
+}
+
+/**
+ * Lotes que conforman una sesión. Si la sesión está ligada a una importación,
+ * son los lotes de esa importación; si no (sesiones demo / antiguas), todo el
+ * catálogo activo.
+ *
+ * Con `incluirContados`, añade además los lotes que ya tienen algún conteo en la
+ * sesión aunque no pertenezcan a la importación — cubre las altas al vuelo de la
+ * spec §4 (producto/lote no reconocido registrado durante el conteo).
+ */
+export function lotesDeSesion(
+  sesionId: string,
+  opts: { incluirContados?: boolean } = {},
+): Lote[] {
+  const s = repo.sesion(sesionId);
+  if (!s?.importacionId) return repo.lotesActivos();
+
+  const base = repo.lotesDeImportacion(s.importacionId);
+  if (!opts.incluirContados) return base;
+
+  const ids = new Set(base.map((l) => l.id));
+  const extra: Lote[] = [];
+  for (const c of repo.conteosDeSesion(sesionId)) {
+    if (ids.has(c.loteId)) continue;
+    ids.add(c.loteId);
+    const l = repo.lote(c.loteId);
+    if (l) extra.push(l);
+  }
+  return extra.length ? [...base, ...extra] : base;
 }
 
 /** ID determinista de la membresía — permite a las Rules resolver el rol con get(). */
@@ -281,9 +324,9 @@ export interface ResultadoCargaSifa {
 
 /**
  * Carga las existencias del sistema (columna EXISTENCIA de un reporte RptSIFA032)
- * para una sesión. Solo se guardan las de códigos que existen en el catálogo
- * ("productos que conforman la sesión"). Reemplaza cualquier carga anterior de la
- * sesión, para que volver a subir un reporte corregido quede limpio.
+ * para una sesión. Solo se guardan las de códigos que conforman la sesión (los
+ * lotes de su importación, más los registrados al vuelo). Reemplaza cualquier
+ * carga anterior de la sesión, para que volver a subir un reporte corregido quede limpio.
  */
 export function guardarStockSifa(
   sesionId: string,
@@ -296,6 +339,10 @@ export function guardarStockSifa(
   let ignorados = 0;
   let sinExistencia = 0;
   const fechaCarga = ahora();
+  // Solo se guardan existencias de códigos que conforman esta sesión.
+  const codigosSesion = new Set(
+    lotesDeSesion(sesionId, { incluirContados: true }).map((l) => l.codigoProducto),
+  );
 
   enLote(() => {
     repo.borrarStockSifaDeSesion(sesionId);
@@ -304,7 +351,7 @@ export function guardarStockSifa(
         sinExistencia++;
         continue;
       }
-      if (!repo.producto(f.codigo)) {
+      if (!codigosSesion.has(f.codigo)) {
         ignorados++;
         continue;
       }
@@ -427,7 +474,7 @@ export interface ProgresoSesion {
 }
 
 export function progresoSesion(sesionId: string): ProgresoSesion {
-  const lotes = repo.lotesActivos().filter((l) => l.requiereQr);
+  const lotes = lotesDeSesion(sesionId).filter((l) => l.requiereQr);
   const vigentesPorLote = new Map<string, Conteo[]>();
   for (const c of seleccionarVigentes(repo.conteosDeSesion(sesionId))) {
     const arr = vigentesPorLote.get(c.loteId) ?? [];
@@ -484,7 +531,7 @@ export function consolidadoDeSesion(
   const conteos = seleccionarVigentes(conteosVisibles(sesionId, viewer));
   const grupos = agruparConteos(conteos);
 
-  const lotes = repo.lotesActivos();
+  const lotes = lotesDeSesion(sesionId, { incluirContados: true });
   const entradas = lotes.map((lote) => {
     const vigentes: Conteo[] = [];
     for (const rol of ['CONTEO_1', 'CONTEO_2', 'MUESTREO'] as RolConteo[]) {

@@ -52,6 +52,13 @@ npm run build   # tsc -b && vite build (+ genera el service worker)
   ese número en las deps.
 - Lógica de negocio nueva → función pura en `src/domain/` **con test**. Si la
   necesita la Cloud Function, añádela al copiado de `functions/sync-domain.mjs`.
+- **Alcance de la sesión**: una `SesionInventario` puede llevar `importacionId`. Si lo
+  tiene, `lotesDeSesion()` (en `conteoService.ts`) acota progreso/consolidado/escaneo a
+  los lotes de esa importación (`Lote.importacionId`, denormalizado para que lo vean los
+  contadores) más los registrados al vuelo (§4). Sin `importacionId` (sesiones demo /
+  antiguas) cae al catálogo global — comportamiento del spec (`fn_consolidado_sesion`).
+  El Admin liga la importación al crear la sesión o desde la tarjeta «Preparación de la
+  sesión» (`SessionPage`), que también importa el PDF y genera la hoja de QR acotada.
 - **Conteos son append-only** para los contadores. La vigencia (`esVigente`) se
   deriva en lectura con `seleccionarVigentes()`; la Cloud Function la escribe de
   forma autoritativa cuando está desplegada. Corregir un conteo = documento nuevo.

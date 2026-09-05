@@ -22,6 +22,10 @@ export interface Lote {
   requiereQr: boolean; // el usuario puede excluirlo (spec 7.1.3)
   activo: boolean;
   createdAt: string;
+  /** Importación de PDF que creó (o tocó por última vez) este lote. Denormalizado
+   *  aquí — no solo en `importaciones_filas` — para que un dispositivo de contador
+   *  pueda resolver el alcance de una sesión sin leer esa colección. */
+  importacionId?: UUID;
 }
 
 export type EstadoImportacion = 'PENDIENTE_REVISION' | 'CONFIRMADA' | 'DESCARTADA';
@@ -95,6 +99,10 @@ export interface SesionInventario {
   fechaInicio: string;
   /** Umbral (0–1) de diferencia entre versiones que dispara alerta al auditor (spec 6.3). */
   umbralDiscrepancia: number;
+  /** Importación de PDF que define la lista de productos de la sesión. Si está
+   *  ausente, la sesión cuenta contra todo el catálogo activo (sesiones demo /
+   *  antiguas). */
+  importacionId?: UUID;
 }
 
 export interface Ubicacion {

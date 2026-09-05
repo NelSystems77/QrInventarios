@@ -4,13 +4,15 @@ import {
   asignarMiembro,
   consolidadoDeSesion,
   crearSesion,
+  lotesDeSesion,
+  progresoSesion,
   registrarConteo,
   viewerDeSesion,
 } from './conteoService';
 import { seleccionarVigentes } from '../domain/sincronizacion';
 import type { Lote, Producto, Usuario } from '../domain/types';
 
-function seedProductoLote(codigo: string): Lote {
+function seedProductoLote(codigo: string, importacionId?: string): Lote {
   const p: Producto = { codigo, nombre: `Producto ${codigo}`, createdAt: 'x' };
   repo.upsertProducto(p);
   const l: Lote = {
@@ -20,6 +22,7 @@ function seedProductoLote(codigo: string): Lote {
     requiereQr: true,
     activo: true,
     createdAt: 'x',
+    ...(importacionId ? { importacionId } : {}),
   };
   repo.upsertLote(l);
   return l;
@@ -158,6 +161,58 @@ describe('triangulación y consolidado (spec 2.4 / 3)', () => {
     const fila = consolidadoDeSesion(s.id, { usuarioId: admin.id, rolGlobal: 'ADMIN' }).find((f) => f.loteId === l.id)!;
     expect(fila.estadoTriangulacion).toBe('COINCIDE');
     expect(fila.stockOficial).toBe(42);
+  });
+});
+
+describe('alcance de la sesión por importación', () => {
+  it('lotesDeSesion sin importacionId cae al catálogo global', () => {
+    const s = crearSesion('S');
+    seedProductoLote('1-00-00-0100');
+    seedProductoLote('1-00-00-0101');
+    expect(lotesDeSesion(s.id)).toHaveLength(2);
+  });
+
+  it('lotesDeSesion con importacionId solo devuelve los lotes de esa importación', () => {
+    const impA = uuid();
+    const impB = uuid();
+    const s = crearSesion('S', 0.2, impA);
+    const la = seedProductoLote('1-00-00-0102', impA);
+    seedProductoLote('1-00-00-0103', impB); // otra importación
+    seedProductoLote('1-00-00-0104'); // catálogo global sin importación
+
+    const lotes = lotesDeSesion(s.id);
+    expect(lotes.map((l) => l.id)).toEqual([la.id]);
+  });
+
+  it('progreso y consolidado ignoran lotes de otra importación', () => {
+    const impA = uuid();
+    const s = crearSesion('S', 0.2, impA);
+    const la = seedProductoLote('1-00-00-0105', impA);
+    seedProductoLote('1-00-00-0106', uuid());
+
+    registrarConteo({
+      sesionId: s.id, loteId: la.id, usuarioId: op1.id,
+      rolConteo: 'CONTEO_1', cantidad: 5,
+    });
+
+    expect(progresoSesion(s.id).totalLotesConQr).toBe(1);
+    const filas = consolidadoDeSesion(s.id, { usuarioId: admin.id, rolGlobal: 'ADMIN' });
+    expect(filas.map((f) => f.loteId)).toEqual([la.id]);
+  });
+
+  it('consolidado incluye un lote fuera de la importación si tiene un conteo (alta al vuelo §4)', () => {
+    const impA = uuid();
+    const s = crearSesion('S', 0.2, impA);
+    seedProductoLote('1-00-00-0107', impA);
+    const alVuelo = seedProductoLote('1-00-00-0108'); // registrado durante el conteo
+
+    registrarConteo({
+      sesionId: s.id, loteId: alVuelo.id, usuarioId: op1.id,
+      rolConteo: 'CONTEO_1', cantidad: 3,
+    });
+
+    const filas = consolidadoDeSesion(s.id, { usuarioId: admin.id, rolGlobal: 'ADMIN' });
+    expect(filas.map((f) => f.loteId).sort()).toContain(alVuelo.id);
   });
 });
 

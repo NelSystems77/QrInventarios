@@ -20,8 +20,6 @@ import type {
 import type { ResultadoExtraccion } from '../lib/pdf/parsePharmacyPdf';
 import { ahora, repo, uuid } from './repo';
 
-const USUARIO_ACTUAL = 'local'; // se reemplazará por el uid de Firebase Auth
-
 /** Paso 1-2: guarda una importación con sus filas en estado PENDIENTE_REVISION. */
 export function crearImportacionDesdeExtraccion(
   nombreArchivo: string,
@@ -83,7 +81,7 @@ export function confirmarImportacion(importacionId: string): {
 
     let lote: Lote;
     if (yaExiste) {
-      lote = { ...yaExiste, requiereQr: fila.requiereQr };
+      lote = { ...yaExiste, requiereQr: fila.requiereQr, importacionId: imp.id };
       repo.upsertLote(lote);
     } else {
       lote = {
@@ -94,6 +92,7 @@ export function confirmarImportacion(importacionId: string): {
         requiereQr: fila.requiereQr,
         activo: true,
         createdAt: ahora(),
+        importacionId: imp.id,
       };
       repo.upsertLote(lote);
       lotesCreados++;
@@ -134,21 +133,28 @@ function etiquetaImprimibleDeLote(lote: Lote): EtiquetaImprimible | null {
   };
 }
 
-/** Lotes con requiere_qr = TRUE que aún no tienen etiqueta impresa (spec 7.1.4). */
-export function lotesPendientesDeImpresion(): Lote[] {
-  return repo.lotesActivos().filter((l) => {
-    if (!l.requiereQr) return false;
+/**
+ * Lotes con requiere_qr = TRUE que aún no tienen etiqueta impresa (spec 7.1.4).
+ * Si se pasa `scope` (p. ej. los lotes de una sesión), se filtra sobre esa lista
+ * en vez de sobre todo el catálogo.
+ */
+export function lotesPendientesDeImpresion(scope?: Lote[]): Lote[] {
+  return (scope ?? repo.lotesActivos()).filter((l) => {
+    if (!l.activo || !l.requiereQr) return false;
     const et = repo.etiquetaDeLote(l.id);
     return !et || et.vecesImpreso === 0;
   });
 }
 
 /** Paso 4: genera el PDF con todas las etiquetas pendientes y registra la impresión. */
-export async function generarPendientes(): Promise<{
+export async function generarPendientes(
+  usuarioId: string,
+  scope?: Lote[],
+): Promise<{
   pdf: Uint8Array;
   cantidad: number;
 }> {
-  const lotes = lotesPendientesDeImpresion();
+  const lotes = lotesPendientesDeImpresion(scope);
   const imprimibles: EtiquetaImprimible[] = [];
 
   for (const lote of lotes) {
@@ -177,7 +183,7 @@ export async function generarPendientes(): Promise<{
     repo.registrarImpresion({
       id: uuid(),
       etiquetaId: actualizada.id,
-      usuarioId: USUARIO_ACTUAL,
+      usuarioId,
       motivo: 'INICIAL',
       fecha: ahora(),
     });
@@ -191,6 +197,7 @@ export async function generarPendientes(): Promise<{
 export async function reimprimirLote(
   loteId: string,
   motivo: MotivoImpresion,
+  usuarioId: string,
 ): Promise<Uint8Array> {
   const lote = repo.lotesActivos().find((l) => l.id === loteId);
   if (!lote) throw new Error('Lote no encontrado');
@@ -218,7 +225,7 @@ export async function reimprimirLote(
   repo.registrarImpresion({
     id: uuid(),
     etiquetaId: actualizada.id,
-    usuarioId: USUARIO_ACTUAL,
+    usuarioId,
     motivo,
     fecha: ahora(),
   });
