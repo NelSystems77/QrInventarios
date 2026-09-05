@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import jsQR from 'jsqr';
 
-// Escáner de QR con la API BarcodeDetector (Chrome/Edge/Android — el target de
-// piso de bodega). Donde no exista, el componente se muestra deshabilitado y la
-// pantalla de conteo ofrece la búsqueda manual como alternativa.
+// Escáner de QR con la cámara. Vía rápida: la API BarcodeDetector
+// (Chrome/Edge/Android). Donde no exista —Safari iOS, Firefox— se decodifica cada
+// cuadro con jsQR (JS puro, incluido en el bundle, funciona offline). Solo si no
+// hay cámara alguna la pantalla de conteo cae a la búsqueda manual.
 
 interface Props {
   onDetectado: (texto: string) => void;
@@ -13,18 +15,24 @@ type DetectorLike = {
   detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
 };
 
-export function soportaBarcodeDetector(): boolean {
+function tieneBarcodeDetector(): boolean {
   return typeof (globalThis as Record<string, unknown>).BarcodeDetector !== 'undefined';
+}
+
+/** Hay forma de escanear con cámara en este navegador (nativa o por jsQR). */
+export function soportaEscaneoCamara(): boolean {
+  return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 }
 
 export function QrScanner({ onDetectado, activo }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ultimo = useRef<{ valor: string; t: number }>({ valor: '', t: 0 });
 
   useEffect(() => {
     if (!activo) return;
-    if (!soportaBarcodeDetector()) {
+    if (!soportaEscaneoCamara()) {
       setError('Este navegador no soporta escaneo de cámara. Usa la búsqueda manual.');
       return;
     }
@@ -32,10 +40,39 @@ export function QrScanner({ onDetectado, activo }: Props) {
     let raf = 0;
     let cancelado = false;
 
-    const Detector = (globalThis as Record<string, unknown>).BarcodeDetector as {
-      new (opts: { formats: string[] }): DetectorLike;
+    const Detector = tieneBarcodeDetector()
+      ? ((globalThis as Record<string, unknown>).BarcodeDetector as {
+          new (opts: { formats: string[] }): DetectorLike;
+        })
+      : null;
+    const detector = Detector ? new Detector({ formats: ['qr_code'] }) : null;
+
+    const emitir = (valor: string) => {
+      const now = Date.now();
+      if (valor !== ultimo.current.valor || now - ultimo.current.t > 2500) {
+        ultimo.current = { valor, t: now };
+        onDetectado(valor);
+      }
     };
-    const detector = new Detector({ formats: ['qr_code'] });
+
+    const leerConJsQR = (v: HTMLVideoElement) => {
+      const w = v.videoWidth;
+      const h = v.videoHeight;
+      if (!w || !h) return;
+      let canvas = canvasRef.current;
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvasRef.current = canvas;
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(v, 0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+      const res = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+      if (res?.data) emitir(res.data);
+    };
 
     (async () => {
       try {
@@ -46,20 +83,23 @@ export function QrScanner({ onDetectado, activo }: Props) {
         const v = videoRef.current!;
         v.srcObject = stream;
         await v.play();
+        let ultimoJsQR = 0;
         const tick = async () => {
           if (cancelado) return;
           try {
-            const codes = await detector.detect(v);
-            if (codes[0]) {
-              const valor = codes[0].rawValue;
+            if (detector) {
+              const codes = await detector.detect(v);
+              if (codes[0]) emitir(codes[0].rawValue);
+            } else {
+              // jsQR es más caro: ~6 lecturas por segundo bastan.
               const now = Date.now();
-              if (valor !== ultimo.current.valor || now - ultimo.current.t > 2500) {
-                ultimo.current = { valor, t: now };
-                onDetectado(valor);
+              if (now - ultimoJsQR > 160) {
+                ultimoJsQR = now;
+                leerConJsQR(v);
               }
             }
           } catch {
-            /* frame sin código */
+            /* cuadro sin código */
           }
           raf = requestAnimationFrame(tick);
         };

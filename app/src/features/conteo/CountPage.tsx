@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '../../components/toast';
-import { QrScanner, soportaBarcodeDetector } from '../../components/QrScanner';
+import { QrScanner, soportaEscaneoCamara } from '../../components/QrScanner';
 import { useUsuarioActual } from '../../auth/firebaseAuth';
 import { ahora, repo, uuid } from '../../data/repo';
 import { idsVigentes, registrarConteo, viewerDeSesion } from '../../data/conteoService';
@@ -23,7 +23,7 @@ export function CountPage() {
   const sesion = repo.sesion(id);
 
   const [modo, setModo] = useState<'scan' | 'manual'>(
-    soportaBarcodeDetector() ? 'scan' : 'manual',
+    soportaEscaneoCamara() ? 'scan' : 'manual',
   );
   const [q, setQ] = useState('');
   const [objetivo, setObjetivo] = useState<Objetivo | null>(null);
