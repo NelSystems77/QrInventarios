@@ -93,9 +93,20 @@ service cloud.firestore {
         && request.resource.data.cantidad is int
         && request.resource.data.cantidad >= 0;
 
-      // Append-only para los contadores. Correcciones = nuevo documento.
-      // La Cloud Function (Admin SDK) escribe `esVigente` sin pasar por reglas.
-      allow update: if esPrivilegiado();
+      // Append-only para los contadores en lo que importa: no se puede alterar
+      // sesión, autor, rol, cantidad ni `clienteUuid` de un conteo ya escrito
+      // (una corrección es un documento NUEVO). Pero el propio autor sí puede
+      // reescribir su doc para el bookkeeping de sincronización (`estadoSync`,
+      // `fechaSync`) y para reflejar la vigencia derivada. La Cloud Function
+      // (Admin SDK) escribe `esVigente` de forma autoritativa sin pasar por reglas.
+      allow update: if esPrivilegiado()
+        || (signedIn()
+            && resource.data.usuarioId == request.auth.uid
+            && request.resource.data.sesionId == resource.data.sesionId
+            && request.resource.data.usuarioId == resource.data.usuarioId
+            && request.resource.data.rolConteo == resource.data.rolConteo
+            && request.resource.data.cantidad == resource.data.cantidad
+            && request.resource.data.clienteUuid == resource.data.clienteUuid);
       // Borrado solo por Admin (borrado en cascada al eliminar la sesión).
       allow delete: if esAdmin();
     }

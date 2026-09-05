@@ -50,6 +50,22 @@ let onConteosCambian: ((sesionId: string) => void) | null = null;
 
 export const firestoreActivo = () => activo;
 
+/**
+ * `estadoSync` / `fechaSync` son bookkeeping LOCAL de la cola offline: no tienen
+ * sentido en Firestore (allá el doc "ya está sincronizado" por definición) y
+ * ensucian el documento que lee la Cloud Function. Se quitan antes de subir; al
+ * bajar, un conteo del servidor se considera SINCRONIZADO.
+ */
+function aFirestore(col: Coleccion, docData: unknown): unknown {
+  if (col === 'conteos' && docData && typeof docData === 'object') {
+    const { estadoSync: _e, fechaSync: _f, ...resto } = docData as Conteo;
+    void _e;
+    void _f;
+    return resto;
+  }
+  return docData;
+}
+
 export interface OpcionesSync {
   privilegiado: boolean;
   usuarioId: string;
@@ -80,6 +96,10 @@ function suscribir(
             // (p. ej. asignar rol en una sesión afectaba a todos). El id del
             // doc ES el uid, que ES `Usuario.id`, así que lo reponemos aquí.
             if (col === 'usuarios') data.id = ch.doc.id;
+            // Un conteo que viene del servidor ya está sincronizado.
+            if (col === 'conteos' && data.estadoSync == null) {
+              data.estadoSync = 'SINCRONIZADO';
+            }
             repo.aplicarDoc(col, ch.doc.id, data);
           }
         });
@@ -98,8 +118,16 @@ export function iniciarFirestoreSync(opts: OpcionesSync) {
 
   // 1) Local → Firestore
   setSink((col, id, docData) => {
+    // Las `alertas` solo las puede escribir un dispositivo privilegiado
+    // (firestore.rules). En un dispositivo de contador se materializan localmente
+    // para feedback inmediato; la versión en Firestore la ponen los dispositivos
+    // ADMIN/AUDITOR y —de forma autoritativa— la Cloud Function `consolidarConteos`.
+    if (col === 'alertas' && !opts.privilegiado) return;
     const ref = doc(fs as Firestore, FS[col], id);
-    const p = docData === null ? deleteDoc(ref) : setDoc(ref, docData as object);
+    const p =
+      docData === null
+        ? deleteDoc(ref)
+        : setDoc(ref, aFirestore(col, docData) as object);
     p.catch((e) => opts.onError?.(e));
   });
 
@@ -206,10 +234,10 @@ function firestoreRemote(): RemoteSync {
     async push(conteos: Conteo[]) {
       await Promise.all(
         conteos.map((c) =>
-          setDoc(doc(fs as Firestore, 'conteos', c.id), {
-            ...c,
-            estadoSync: 'SINCRONIZADO',
-          }),
+          setDoc(
+            doc(fs as Firestore, 'conteos', c.id),
+            aFirestore('conteos', c) as object,
+          ),
         ),
       );
     },

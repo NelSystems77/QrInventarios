@@ -7,7 +7,7 @@
 // implementa `RemoteSync` con Firestore y se llama a `configurarRemote(...)`.
 
 import type { Conteo } from '../domain/types';
-import { ahora, repo } from './repo';
+import { ahora, aplicarRemoto, repo } from './repo';
 
 export interface RemoteSync {
   /** Sube conteos al backend. Idempotente por `clienteUuid`. */
@@ -105,12 +105,17 @@ async function sincronizarSesionInterno(
     const pendientes = conteosPendientes(sesionId);
     if (pendientes.length) {
       await remoto.push(pendientes);
-      repo.guardarConteos(
-        pendientes.map((c) => ({
-          ...c,
-          estadoSync: 'SINCRONIZADO' as const,
-          fechaSync: ahora(),
-        })),
+      // Solo bookkeeping local: `estadoSync`/`fechaSync` no viajan a Firestore
+      // (ya los subió `remoto.push`), así que se marca bajo `aplicarRemoto` para
+      // no re-disparar el sink con una escritura redundante.
+      aplicarRemoto(() =>
+        repo.guardarConteos(
+          pendientes.map((c) => ({
+            ...c,
+            estadoSync: 'SINCRONIZADO' as const,
+            fechaSync: ahora(),
+          })),
+        ),
       );
     }
 
@@ -125,8 +130,11 @@ async function sincronizarSesionInterno(
       if (nuevos.length) {
         // Append-only: se añaden los conteos de otros dispositivos y la vigencia
         // se deriva en lectura (spec 6.2) — sin reescrituras ni carreras.
-        repo.guardarConteos(
-          nuevos.map((c) => ({ ...c, estadoSync: 'SINCRONIZADO' as const })),
+        // Vienen del remoto: no reenviarlos por el sink.
+        aplicarRemoto(() =>
+          repo.guardarConteos(
+            nuevos.map((c) => ({ ...c, estadoSync: 'SINCRONIZADO' as const })),
+          ),
         );
       }
     }
