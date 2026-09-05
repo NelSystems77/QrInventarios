@@ -52,7 +52,8 @@ desde la misma pantalla con rol `OPERADOR`; el super admin los promueve.
 | 7.1.5 / 7.5 | Reimpresión individual con motivo e historial | ✅ `features/labels/ReprintPage` |
 | 2.x | Catálogo `productos` / `lotes` (N lotes por producto) | ✅ `domain/types.ts` + `data/repo.ts` |
 | 2.2 | Sesiones, ubicaciones, captura de conteos con corrección | ✅ `features/conteo` |
-| 2.4 / 3 | Triangulación y consolidado + regla de stock oficial | ✅ `domain/triangulacion.ts` (con tests) |
+| 2.4 / 3 | Triangulación y consolidado + regla de stock oficial (**Stock físico** en la UI) | ✅ `domain/triangulacion.ts` (con tests) |
+| — | **Stock SIFA**: Admin carga el reporte RptSIFA032 en la sesión → existencia por código → reconciliación *Stock SIFA vs físico* en el consolidado | ✅ `domain/reconciliacion.ts` (con tests), `stock_sifa` en Firestore |
 | 6 | Sync offline: `cliente_uuid` idempotente, vigencia derivada, alerta al auditor | ✅ `domain/sincronizacion.ts` (con tests) |
 | 4 | Producto/lote no reconocido → registrar al vuelo sin bloquear | ✅ `features/conteo/CountPage` |
 | 5 | Ingreso manual con flag `ingreso_manual` | ✅ `features/conteo/CountPage` |

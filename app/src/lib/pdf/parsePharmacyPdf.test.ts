@@ -12,6 +12,7 @@ describe('extraerFilasDeLineas — reporte CCSS (RptSIFA032)', () => {
         presentacion: 'CN',
         nombre: 'ROSUVASTATINA 10 MG COMO ROSU',
         vencimiento: undefined,
+        existencia: 231.88,
         valida: true,
       },
     ]);
@@ -24,6 +25,15 @@ describe('extraerFilasDeLineas — reporte CCSS (RptSIFA032)', () => {
     ]);
     expect(filas.map((f) => f.codigo)).toEqual(['1-10-16-0010', '1-00-02-6468']);
     expect(filas[0].nombre).toBe('PARACETAMOL 500 MG, TABLETA');
+  });
+
+  it('captura la columna EXISTENCIA (primer valor numérico de la fila)', () => {
+    const { filas } = extraerFilasDeLineas([
+      '1-10-16-0010 CN PARACETAMOL 500 MG, TABLETA 551.550 1,700.000 5,011.000',
+      '1-00-02-6468 FC CLARITROMICINA JARABE 0.000 0.000 0.000',
+      '1-10-11-0030 CN ACIDO ACETIL SALICILICO 100 MG. T 443.070 603.000 1,189.700',
+    ]);
+    expect(filas.map((f) => f.existencia)).toEqual([551.55, 0, 443.07]);
   });
 
   it('ignora encabezados y pies de página sin código', () => {

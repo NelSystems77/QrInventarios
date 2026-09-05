@@ -43,6 +43,7 @@ no un reemplazo directo del repo. El punto de integración ya existe:
 | `sesiones/{sesionId}/conteos/{conteoId}` | uuid | `loteId`, `rolConteo`, `cantidad`, `esVigente`, `clienteUuid`, `fechaRegistroLocal`, `ingresoManual` | |
 | `sesiones/{sesionId}/ubicaciones/{id}` | uuid | `nombre` | |
 | `sesiones/{sesionId}/alertas/{id}` | uuid | `tipo`, `detalle`, `cantidades`, `atendida` | solo Admin/Auditor |
+| `stock_sifa/{sesionId__codigo}` | `<sesionId>__<codigo>` | `sesionId`, `codigo`, `existencia`, `nombreReporte`, `archivo`, `fechaCarga` | existencia del sistema (reporte RptSIFA032) por sesión; escribe Admin, lee Admin/Auditor; snapshot acotado a la sesión activa. Se compara con el stock físico triangulado en la vista de reconciliación del consolidado |
 
 ## Blind count (spec 2.3) — reforzado en Security Rules
 

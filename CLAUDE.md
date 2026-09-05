@@ -32,7 +32,7 @@ npm run build   # tsc -b && vite build (+ genera el service worker)
 
 | Capa | Ubicación | Rol |
 |---|---|---|
-| Dominio (puro, testeado) | `src/domain/` | `triangulacion.ts` (§2.4, §3), `sincronizacion.ts` (§6 + `seleccionarVigentes`), `types.ts` |
+| Dominio (puro, testeado) | `src/domain/` | `triangulacion.ts` (§2.4, §3), `sincronizacion.ts` (§6 + `seleccionarVigentes`), `reconciliacion.ts` (Stock SIFA vs físico), `types.ts` |
 | Repositorio local | `src/data/repo.ts` | fuente de verdad en el dispositivo; **toda** la persistencia pasa por aquí. `set`/`del` internos disparan el *sink* |
 | Casos de uso | `src/data/service.ts` (etiquetas), `src/data/conteoService.ts` (conteo) | |
 | Sincronización | `src/data/firestoreSync.ts` (espejo Firestore ↔ repo; `conteos`/`alertas`/`filas` acotados a la sesión/importación activa vía `useAmbito`) · `src/data/sync.ts` (`RemoteSync` + cola offline) | |
@@ -61,6 +61,14 @@ npm run build   # tsc -b && vite build (+ genera el service worker)
   `firestoreSync` lo acotan; `firestore.rules` lo hace inviolable. No lo debilites.
 - Textos de UI en español (es-CR). Sin librería de estilos: CSS plano en
   `src/index.css` con variables `--*`.
+- **Stock SIFA vs Stock físico**: el dominio sigue llamando `stockOficial` al
+  resultado triangulado del §3 (usado por la Cloud Function), pero la UI lo
+  muestra como **"Stock físico"**. El **"Stock SIFA"** es la columna EXISTENCIA
+  del reporte RptSIFA032 que un Admin carga en la sesión (`guardarStockSifa`,
+  colección `stock_sifa` acotada a la sesión activa, solo Admin/Auditor). El
+  consolidado tiene una vista "Stock SIFA vs físico" (`reconciliacionDeSesion` →
+  `construirReconciliacion`). El mismo parser (`parsePharmacyPdf`) sirve para
+  etiquetas y para SIFA; ahora también extrae `existencia`.
 
 ## Datos de demostración
 

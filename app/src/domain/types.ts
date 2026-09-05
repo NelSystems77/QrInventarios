@@ -167,6 +167,50 @@ export interface FilaConsolidado {
   estadoStock: EstadoStock;
 }
 
+// ───────────────── Stock SIFA — existencias del sistema (RptSIFA032) ─────────────────
+
+/**
+ * Existencia que el sistema institucional (reporte RptSIFA032) declara para un
+ * código, cargada por un Admin para una sesión concreta. Es el "Stock SIFA" con
+ * el que se compara el "Stock físico" (resultado triangulado del doble conteo).
+ * El reporte da la existencia por CÓDIGO (no por lote); por eso la clave es
+ * `<sesionId>__<codigo>`.
+ */
+export interface StockSifa {
+  id: UUID; // `${sesionId}__${codigo}`
+  sesionId: UUID;
+  codigo: string;
+  /** Valor de la columna EXISTENCIA del reporte. Puede traer decimales. */
+  existencia: number;
+  /** Nombre tal cual venía en el PDF — solo referencia visual. */
+  nombreReporte?: string;
+  /** Nombre del archivo cargado. */
+  archivo?: string;
+  /** ISO — cuándo se cargó. */
+  fechaCarga: string;
+}
+
+export type EstadoReconciliacion =
+  | 'CUADRA' // stock físico == stock SIFA
+  | 'SOBRANTE' // físico > SIFA
+  | 'FALTANTE' // físico < SIFA
+  | 'PENDIENTE' // falta cerrar la triangulación de algún lote del código
+  | 'SIN_SIFA'; // no se cargó existencia para este código
+
+/** Fila de la vista de reconciliación a nivel de código: Stock SIFA vs Stock físico. */
+export interface FilaReconciliacion {
+  codigo: string;
+  nombre: string;
+  stockSifa: number | null;
+  /** Suma del stock físico (triangulado) de todos los lotes del código. */
+  stockFisico: number | null;
+  lotesTotales: number;
+  lotesResueltos: number;
+  /** stockFisico − stockSifa (null si falta alguno de los dos). */
+  diferencia: number | null;
+  estado: EstadoReconciliacion;
+}
+
 /** Payload JSON que se codifica dentro del QR. Mismo lector para conteo y verificación. */
 export interface QrPayload {
   v: 2;

@@ -36,6 +36,7 @@ const FS: Record<Coleccion, string> = {
   miembros: 'miembros',
   conteos: 'conteos',
   alertas: 'alertas',
+  stockSifa: 'stock_sifa',
 };
 
 let activo = false;
@@ -173,8 +174,10 @@ export function setSesionActiva(sesionId: string | null) {
 function reengancharSesion() {
   acotados.get('conteos')?.();
   acotados.get('alertas')?.();
+  acotados.get('stockSifa')?.();
   acotados.delete('conteos');
   acotados.delete('alertas');
+  acotados.delete('stockSifa');
   if (!activo || !opciones || !sesionActiva) return;
   const sid = sesionActiva;
 
@@ -197,6 +200,15 @@ function reengancharSesion() {
       suscribir(
         'alertas',
         query(collection(fs as Firestore, 'alertas'), where('sesionId', '==', sid)),
+      ),
+    );
+    // Stock SIFA: existencias del sistema para la sesión activa. Solo lo necesitan
+    // los dispositivos ADMIN/AUDITOR (vista de reconciliación).
+    acotados.set(
+      'stockSifa',
+      suscribir(
+        'stockSifa',
+        query(collection(fs as Firestore, 'stock_sifa'), where('sesionId', '==', sid)),
       ),
     );
   }

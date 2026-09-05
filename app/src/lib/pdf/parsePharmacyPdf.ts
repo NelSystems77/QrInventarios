@@ -18,6 +18,8 @@ export interface FilaExtraida {
   nombre: string;
   lote?: string;
   vencimiento?: string;
+  /** Columna EXISTENCIA del reporte RptSIFA032 (si la fila trae columnas numéricas). */
+  existencia?: number;
   valida: boolean;
 }
 
@@ -30,8 +32,9 @@ export interface ResultadoExtraccion {
 
 const CODIGO = /\d-\d{2}-\d{2}-\d{4}/;
 // código + presentación (2 letras) + nombre (lazy) + 3 columnas numéricas al final
+// (EXISTENCIA, CUOTA, CONSUMO). Se captura la primera: EXISTENCIA.
 const FILA_CON_CANTIDADES =
-  /(\d-\d{2}-\d{2}-\d{4})\s+([A-Z]{2})\s+(.+?)\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s*$/;
+  /(\d-\d{2}-\d{2}-\d{4})\s+([A-Z]{2})\s+(.+?)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s*$/;
 // variante sin columnas numéricas (otros exportes): código + [pres?] + nombre
 const FILA_SIMPLE = /^(\d-\d{2}-\d{2}-\d{4})\s+(?:([A-Z]{2})\s+)?(.+?)\s*$/;
 // fecha dd/mm/yyyy o dd-mm-yyyy embebida en la línea (posible vencimiento)
@@ -68,6 +71,13 @@ function normalizarNombre(nombre: string): string {
 function isoDesdeFecha(m: RegExpMatchArray): string {
   const [, dd, mm, yyyy] = m;
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/** '2,388.380' → 2388.38 · ',' es separador de miles, '.' decimal en el reporte. */
+function numeroReporte(s: string | undefined): number | undefined {
+  if (!s) return undefined;
+  const n = parseFloat(s.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export async function parsePharmacyPdf(
@@ -118,6 +128,7 @@ export function extraerFilasDeLineas(lineas: string[]): {
     const codigo = m[1];
     const presentacion = m[2] || undefined;
     let nombre = normalizarNombre(m[3] ?? '');
+    const existencia = conCant ? numeroReporte(m[4]) : undefined;
     let vencimiento: string | undefined;
 
     // Si NO venían columnas numéricas, una fecha en la línea puede ser el vencimiento.
@@ -138,6 +149,7 @@ export function extraerFilasDeLineas(lineas: string[]): {
       presentacion,
       nombre,
       vencimiento,
+      existencia,
       valida: nombre.length >= 3,
     });
   }

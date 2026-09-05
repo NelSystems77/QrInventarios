@@ -16,6 +16,7 @@ import type {
   MiembroSesion,
   Producto,
   SesionInventario,
+  StockSifa,
   Ubicacion,
   Usuario,
 } from '../domain/types';
@@ -33,6 +34,7 @@ interface DB {
   miembros: Record<string, MiembroSesion>;
   conteos: Record<string, Conteo>;
   alertas: Record<string, AlertaAuditoria>;
+  stockSifa: Record<string, StockSifa>;
 }
 
 export type Coleccion = keyof DB;
@@ -42,7 +44,7 @@ const KEY = 'qr-inventarios/db/v1';
 const vacio: DB = {
   productos: {}, lotes: {}, importaciones: {}, filas: {}, etiquetas: {},
   historial: {}, usuarios: {}, sesiones: {}, ubicaciones: {}, miembros: {},
-  conteos: {}, alertas: {},
+  conteos: {}, alertas: {}, stockSifa: {},
 };
 
 function cargar(): DB {
@@ -260,6 +262,22 @@ export const repo = {
   },
   alerta(id: string): AlertaAuditoria | undefined {
     return db.alertas[id];
+  },
+
+  // ---- Stock SIFA (existencias del sistema por sesión + código) ----
+  stockSifaId: (sesionId: string, codigo: string) => `${sesionId}__${codigo}`,
+  upsertStockSifa(s: StockSifa) {
+    set('stockSifa', s.id, s);
+  },
+  stockSifaDeSesion(sesionId: string): StockSifa[] {
+    return Object.values(db.stockSifa).filter((s) => s.sesionId === sesionId);
+  },
+  borrarStockSifaDeSesion(sesionId: string) {
+    enLote(() => {
+      for (const s of Object.values(db.stockSifa)) {
+        if (s.sesionId === sesionId) del('stockSifa', s.id);
+      }
+    });
   },
 
   /** Borra todo lo local. No propaga a Firestore. */

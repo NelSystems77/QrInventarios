@@ -9,10 +9,12 @@ import {
   cerrarSesion,
   crearUbicacion,
   eliminarSesion,
+  guardarStockSifa,
   progresoSesion,
   purgarMiembrosHuerfanos,
   viewerDeSesion,
 } from '../../data/conteoService';
+import { parsePharmacyPdf } from '../../lib/pdf/parsePharmacyPdf';
 import { useRepo } from '../../data/useRepo';
 import { useSesionActiva } from '../../data/useAmbito';
 import type { RolConteo } from '../../domain/types';
@@ -27,6 +29,45 @@ export function SessionPage() {
   const usuario = useUsuarioActual();
   const sesion = repo.sesion(id);
   const [nuevaUbic, setNuevaUbic] = useState('');
+  const [cargandoSifa, setCargandoSifa] = useState(false);
+
+  async function cargarSifa(file: File) {
+    if (
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
+    ) {
+      toast('El archivo debe ser un PDF (reporte RptSIFA032).');
+      return;
+    }
+    setCargandoSifa(true);
+    try {
+      const { filas } = await parsePharmacyPdf(await file.arrayBuffer());
+      const conExistencia = filas.filter((f) => f.existencia !== undefined);
+      if (conExistencia.length === 0) {
+        toast('El PDF no trae la columna EXISTENCIA. ¿Es un reporte RptSIFA032?');
+        return;
+      }
+      const r = guardarStockSifa(
+        id,
+        filas.map((f) => ({
+          codigo: f.codigo,
+          nombre: f.nombre,
+          existencia: f.existencia,
+        })),
+        file.name,
+      );
+      toast(
+        `Stock SIFA: ${r.guardados} existencias cargadas` +
+          (r.ignorados ? ` · ${r.ignorados} códigos fuera del catálogo` : '') +
+          (r.sinExistencia ? ` · ${r.sinExistencia} filas sin existencia` : ''),
+      );
+    } catch (e) {
+      console.error(e);
+      toast('No se pudo leer el PDF: ' + (e as Error).message);
+    } finally {
+      setCargandoSifa(false);
+    }
+  }
 
   const uid = usuario?.id;
   useEffect(() => {
@@ -196,6 +237,69 @@ export function SessionPage() {
 
       {viewer.rolGlobal === 'ADMIN' && (
         <>
+          <h2>Stock SIFA (existencias del sistema)</h2>
+          <div className="card">
+            <p className="muted" style={{ marginTop: 0 }}>
+              Sube el reporte <strong>RptSIFA032</strong>. Se toma la columna
+              EXISTENCIA de cada código que forme parte de esta sesión y se compara
+              contra el stock físico en el consolidado. Volver a subir un reporte
+              reemplaza el anterior.
+            </p>
+            <div className="row">
+              <span>
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={cargandoSifa}
+                  onClick={(e) => {
+                    (e.currentTarget.nextElementSibling as HTMLInputElement)?.click();
+                  }}
+                >
+                  {cargandoSifa ? 'Procesando…' : 'Cargar existencias (PDF)'}
+                </button>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) cargarSifa(f);
+                    e.target.value = '';
+                  }}
+                />
+              </span>
+              {(() => {
+                const sifa = repo.stockSifaDeSesion(id);
+                if (sifa.length === 0)
+                  return <span className="muted">Sin existencias cargadas.</span>;
+                const ult = sifa
+                  .map((s) => s.fechaCarga)
+                  .sort()
+                  .at(-1);
+                return (
+                  <span className="muted">
+                    {sifa.length} existencias
+                    {sifa[0]?.archivo ? ` · ${sifa[0].archivo}` : ''}
+                    {ult ? ` · ${new Date(ult).toLocaleString()}` : ''}
+                  </span>
+                );
+              })()}
+              {repo.stockSifaDeSesion(id).length > 0 && (
+                <button
+                  className="danger sm"
+                  onClick={() => {
+                    if (confirm('¿Borrar las existencias SIFA de esta sesión?')) {
+                      repo.borrarStockSifaDeSesion(id);
+                      toast('Existencias SIFA borradas');
+                    }
+                  }}
+                >
+                  Borrar
+                </button>
+              )}
+            </div>
+          </div>
+
           <h2>Equipo de la sesión</h2>
           <div className="card">
             <table>

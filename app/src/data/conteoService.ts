@@ -4,12 +4,14 @@ import type {
   AlertaAuditoria,
   Conteo,
   FilaConsolidado,
+  FilaReconciliacion,
   MiembroSesion,
   RolConteo,
   RolGlobal,
   SesionInventario,
   Ubicacion,
 } from '../domain/types';
+import { construirReconciliacion } from '../domain/reconciliacion';
 import {
   agruparConteos,
   claveGrupo,
@@ -237,6 +239,116 @@ export function atenderAlerta(alertaId: string) {
   if (a) repo.upsertAlerta({ ...a, atendida: true });
 }
 
+// ───────────────────────── Stock SIFA (existencias del sistema) ─────────────────────────
+
+export interface FilaSifaImportada {
+  codigo: string;
+  nombre: string;
+  existencia?: number;
+}
+
+export interface ResultadoCargaSifa {
+  guardados: number;
+  /** Filas cuyo código no está en el catálogo de productos. */
+  ignorados: number;
+  /** Filas sin columna EXISTENCIA legible. */
+  sinExistencia: number;
+}
+
+/**
+ * Carga las existencias del sistema (columna EXISTENCIA de un reporte RptSIFA032)
+ * para una sesión. Solo se guardan las de códigos que existen en el catálogo
+ * ("productos que conforman la sesión"). Reemplaza cualquier carga anterior de la
+ * sesión, para que volver a subir un reporte corregido quede limpio.
+ */
+export function guardarStockSifa(
+  sesionId: string,
+  filas: FilaSifaImportada[],
+  archivo?: string,
+): ResultadoCargaSifa {
+  if (!repo.sesion(sesionId)) throw new Error('Sesión no encontrada');
+
+  let guardados = 0;
+  let ignorados = 0;
+  let sinExistencia = 0;
+  const fechaCarga = ahora();
+
+  enLote(() => {
+    repo.borrarStockSifaDeSesion(sesionId);
+    for (const f of filas) {
+      if (f.existencia === undefined || !Number.isFinite(f.existencia)) {
+        sinExistencia++;
+        continue;
+      }
+      if (!repo.producto(f.codigo)) {
+        ignorados++;
+        continue;
+      }
+      repo.upsertStockSifa({
+        id: repo.stockSifaId(sesionId, f.codigo),
+        sesionId,
+        codigo: f.codigo,
+        existencia: f.existencia,
+        nombreReporte: f.nombre || undefined,
+        archivo,
+        fechaCarga,
+      });
+      guardados++;
+    }
+  });
+
+  return { guardados, ignorados, sinExistencia };
+}
+
+/**
+ * Vista de reconciliación a nivel de código: Stock SIFA vs Stock físico
+ * (triangulado). Solo para dispositivos privilegiados (usa el stock físico, que
+ * un contador no puede ver — blind count).
+ */
+export function reconciliacionDeSesion(
+  sesionId: string,
+  viewer: Viewer,
+): FilaReconciliacion[] {
+  if (!esPrivilegiado(viewer)) return [];
+  const filas = consolidadoDeSesion(sesionId, viewer, { soloConMovimiento: false });
+  return construirReconciliacion(
+    filas,
+    repo.stockSifaDeSesion(sesionId),
+  ).filter((f) => f.stockSifa !== null || f.lotesResueltos > 0);
+}
+
+export function exportarReconciliacionCsv(filas: FilaReconciliacion[]): string {
+  const head = [
+    'codigo',
+    'nombre',
+    'stock_sifa',
+    'stock_fisico',
+    'diferencia',
+    'estado',
+    'lotes_resueltos',
+    'lotes_totales',
+  ];
+  const esc = (v: unknown) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lineas = filas.map((f) =>
+    [
+      f.codigo,
+      f.nombre,
+      f.stockSifa ?? '',
+      f.stockFisico ?? '',
+      f.diferencia ?? '',
+      f.estado,
+      f.lotesResueltos,
+      f.lotesTotales,
+    ]
+      .map(esc)
+      .join(','),
+  );
+  return [head.join(','), ...lineas].join('\n');
+}
+
 /**
  * Elimina una sesión y todo lo que cuelga de ella (conteos, miembros, alertas).
  * Se ejecuta desde el dispositivo del Admin en un solo bloque; el sink propaga
@@ -252,6 +364,9 @@ export function eliminarSesion(sesionId: string) {
     }
     for (const a of repo.alertasDeSesion(sesionId)) {
       repo.eliminarDoc('alertas', a.id);
+    }
+    for (const s of repo.stockSifaDeSesion(sesionId)) {
+      repo.eliminarDoc('stockSifa', s.id);
     }
     repo.eliminarDoc('sesiones', sesionId);
   });
@@ -397,7 +512,7 @@ export function exportarConsolidadoCsv(filas: FilaConsolidado[]): string {
     'conteo_2',
     'muestreo',
     'estado_triangulacion',
-    'stock_oficial',
+    'stock_fisico',
     'estado_stock',
   ];
   const esc = (v: unknown) => {

@@ -118,7 +118,7 @@ export const limpiarSesionEliminada = onDocumentDeleted(
   async (event) => {
     const sesionId = event.params.sesionId;
     let total = 0;
-    for (const col of ['conteos', 'miembros', 'alertas']) {
+    for (const col of ['conteos', 'miembros', 'alertas', 'stock_sifa']) {
       const snap = await db
         .collection(col)
         .where('sesionId', '==', sesionId)

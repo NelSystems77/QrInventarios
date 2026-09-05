@@ -115,5 +115,14 @@ service cloud.firestore {
     match /alertas/{id} {
       allow read, write: if esPrivilegiado();
     }
+
+    // ---- Stock SIFA: existencias del sistema por sesión + código ----
+    // Las carga un Admin desde un reporte RptSIFA032; las lee la vista de
+    // reconciliación (Admin / Auditor). No es dato de blind count, pero solo los
+    // privilegiados lo necesitan.
+    match /stock_sifa/{id} {
+      allow read: if esPrivilegiado();
+      allow write: if esAdmin();
+    }
   }
 }
